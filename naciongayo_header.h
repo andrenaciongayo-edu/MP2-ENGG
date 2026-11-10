@@ -1,23 +1,3 @@
-/*
- * =====================================================================================
- * File:        naciongayo_header.h
- * Description: Block 4 (BOOKING) - Machine Problem 2, object-oriented version.
- *              Contains constants, text/validation helpers, and the classes:
- *
- *                Record  (abstract parent)
- *                  |-- Movie     (read from M-XXX.txt of the MOVIE block)
- *                  |-- Cinema    (read from I-XXX.txt of the CINEMA block)
- *                  `-- Booking   (B-XXX.txt of this block)
- *                Customer        (name, mobile number, email address)
- *                SeatMap         (seat grid of one cinema, dynamic array)
- *                BookingList     (Booking List.txt and Booking Counter.txt)
- *                BookingSystem   (menus and workflows; ties everything together)
- *
- * Author:      Naciongayo
- * Course:      Engg 30.02 - Machine Problem 2
- * =====================================================================================
- */
-
 #ifndef BOOKING_HEADER_H
 #define BOOKING_HEADER_H
 
@@ -37,18 +17,18 @@ const int MAX_MOVIES = 50;
 const int MAX_CINEMAS = 50;
 const int MAX_ROWS = 26;            // Rows A to Z
 const int MAX_SEATS_PER_ROW = 50;
-const int MAX_BOOKINGS = 1000;
+const int MAX_RECORDS = 1000;       // Most entries in any one list file
 const int MAX_SEATS_PER_BOOKING = 50;
 const int MAX_FILE_LINES = 12;      // Most lines read from any one record file
 const int LINE_WIDTH = 46;          // Width of formatted screen titles
 
-const int MOBILE_NUMBER_LENGTH = 13;
+const int RECORD_ID_LENGTH = 5;     // e.g. B-001, C-001
 const int BOOKING_ID_LENGTH = 5;
 const int MAX_BOOKING_NUMBER = 999;
 const int MAX_MANAGER_LOGIN_ATTEMPTS = 3;
 
 // =====================================================================================
-// Helper Functions & Tokenizer (unchanged from MP1, except where noted)
+// Helper Functions & Tokenizer (same as MP1, except where marked NEW)
 // =====================================================================================
 
 // Calculates the length of a string
@@ -68,11 +48,6 @@ bool isDigitChar(char c) {
 // Checks if a character is whitespace
 bool isBlankChar(char c) {
     return (c == ' ' || c == '\t' || c == '\r' || c == '\n');
-}
-
-// Checks if a character is a letter
-bool isLetterChar(char c) {
-    return ((c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z'));
 }
 
 // Converts a lowercase character to uppercase
@@ -226,15 +201,29 @@ string makeID(char prefix, int number) {
     return id;
 }
 
-// Validates a booking ID (pass by value so it doesn't modify the caller's string)
-bool isValidBookingID(string bookingID) {
-    bookingID = toUpper(trim(bookingID));
-    if (textLength(bookingID) != BOOKING_ID_LENGTH) return false;
-    if (bookingID[0] != 'B' || bookingID[1] != '-') return false;
-    for (int i = 2; i < BOOKING_ID_LENGTH; i++) {
-        if (!isDigitChar(bookingID[i])) return false;
+// NEW (MP2): Validates an ID such as B-001 or C-012 (pass by value so the caller's string is untouched)
+bool isValidRecordID(char prefix, string recordID) {
+    recordID = toUpper(trim(recordID));
+    if (textLength(recordID) != RECORD_ID_LENGTH) return false;
+    if (recordID[0] != prefix || recordID[1] != '-') return false;
+    for (int i = 2; i < RECORD_ID_LENGTH; i++) {
+        if (!isDigitChar(recordID[i])) return false;
     }
     return true;
+}
+
+//Turns "Reyes, Rose Marie A." (CUSTOMER block format) into "Rose Marie A. Reyes"
+string flipName(const string &fileName) {
+    int len = textLength(fileName);
+    int commaPos = -1;
+    for (int i = 0; i < len && commaPos == -1; i++) {
+        if (fileName[i] == ',') commaPos = i;
+    }
+    if (commaPos == -1) return trim(fileName);
+
+    string lastName = trim(cutText(fileName, 0, commaPos));
+    string givenNames = trim(cutText(fileName, commaPos + 1, len));
+    return givenNames + " " + lastName;
 }
 
 // Extracts the data part of a saved line (after the first colon)
@@ -251,10 +240,10 @@ string extractAfterColon(const string &line) {
     return trim(cutText(line, colonPos + 1, len));
 }
 
-// NEW (MP2): Reads up to maxLines lines of a file into an array (each line trimmed).
+// Reads up to maxLines lines of a file into an array (each line trimmed).
 // Returns the number of lines read, or -1 if the file cannot be opened.
 int readFileLines(const string &fileName, string lines[], int maxLines) {
-    ifstream in(fileName.c_str());
+    ifstream in(fileName);
     if (!in.is_open()) return -1;
 
     int count = 0;
@@ -265,44 +254,6 @@ int readFileLines(const string &fileName, string lines[], int maxLines) {
     }
     in.close();
     return count;
-}
-
-// NEW (MP2): Checks that an email address looks valid (local@domain.tld)
-bool isValidEmail(const string &email) {
-    int len = textLength(email);
-    int atPos = -1;
-
-    for (int i = 0; i < len; i++) {
-        if (isBlankChar(email[i])) return false;
-        if (email[i] == '@') {
-            if (atPos != -1) return false;      // only one '@' allowed
-            atPos = i;
-        }
-    }
-    if (atPos < 1 || atPos >= len - 3) return false;    // needs a local part and a domain like "a.b"
-
-    // Local part: letters, digits and . _ % + -  (cannot start or end with a dot)
-    for (int i = 0; i < atPos; i++) {
-        char c = email[i];
-        bool ok = isLetterChar(c) || isDigitChar(c) ||
-                  c == '.' || c == '_' || c == '%' || c == '+' || c == '-';
-        if (!ok) return false;
-    }
-    if (email[0] == '.' || email[atPos - 1] == '.') return false;
-
-    // Domain: letters, digits, '-' and dots; at least one dot, none at the edges or doubled
-    int dotCount = 0;
-    for (int i = atPos + 1; i < len; i++) {
-        char c = email[i];
-        bool ok = isLetterChar(c) || isDigitChar(c) || c == '-' || c == '.';
-        if (!ok) return false;
-        if (c == '.') {
-            if (i == atPos + 1 || i == len - 1) return false;
-            if (email[i - 1] == '.') return false;
-            dotCount++;
-        }
-    }
-    return (dotCount > 0);
 }
 
 // ---------- Screen Formatting Helpers ----------
@@ -367,40 +318,6 @@ int getIntInRange(int low, int high) {
     return value;
 }
 
-// Prompts the user continuously until a valid mobile number is provided
-string getMobile() {
-    string mobile;
-    bool valid;
-    do {
-        getline(cin, mobile);
-        mobile = trim(mobile);
-        valid = (textLength(mobile) == MOBILE_NUMBER_LENGTH) &&
-                (mobile[0] == '+' && mobile[1] == '6' && mobile[2] == '3');
-        for (int i = 3; i < MOBILE_NUMBER_LENGTH && valid; i++) {
-            if (!isDigitChar(mobile[i])) valid = false;
-        }
-        if (!valid) {
-            cout << "  ! Format: +63 followed by 10 digits: ";
-        }
-    } while (!valid);
-    return mobile;
-}
-
-// NEW (MP2): Prompts the user continuously until a valid email address is provided
-string getEmail() {
-    string email;
-    bool valid;
-    do {
-        getline(cin, email);
-        email = trim(email);
-        valid = isValidEmail(email);
-        if (!valid) {
-            cout << "  ! Enter a valid email (e.g. name@mail.com): ";
-        }
-    } while (!valid);
-    return email;
-}
-
 // ---------- Seat Name Helpers ----------
 
 // Parses a single seat string into row index and seat number (e.g. J20 -> 9, 20)
@@ -433,13 +350,7 @@ int readSeatList(int minSeats, string seats[MAX_SEATS_PER_BOOKING]) {
         bool overflow = false;
         count = parseSeatTokens(line, seats, overflow);
 
-        if (overflow) {
-            cout << "  ! Too many seats entered (Max: " << MAX_SEATS_PER_BOOKING << ").\n  Try again: ";
-            valid = false;
-            continue;
-        }
-
-        valid = (count >= minSeats);
+        valid = (count >= minSeats) && !overflow;
         for (int i = 0; i < count && valid; i++) {
             int rowIndex, seatNo;
             if (!parseSeat(seats[i], rowIndex, seatNo)) valid = false;
@@ -449,7 +360,9 @@ int readSeatList(int minSeats, string seats[MAX_SEATS_PER_BOOKING]) {
                 if (seats[j] == seats[i]) valid = false;
             }
         }
-        if (!valid) {
+        if (overflow) {
+            cout << "  ! Too many seats entered (Max: " << MAX_SEATS_PER_BOOKING << ").\n  Try again: ";
+        } else if (!valid) {
             cout << "  ! Invalid seat list. Example: J20 K20\n  Try again: ";
         }
     } while (!valid);
@@ -457,54 +370,99 @@ int readSeatList(int minSeats, string seats[MAX_SEATS_PER_BOOKING]) {
 }
 
 // =====================================================================================
-// CLASS: Record  (abstract PARENT class)
+// CLASS: Record  (PARENT class)
 // -------------------------------------------------------------------------------------
-// INHERITANCE   : Movie, Cinema and Booking inherit the ID and the file name from here.
-// ENCAPSULATION : 'id' is protected; the outside world uses getID().
-// POLYMORPHISM  : listLine(), display() and loadFromFile() are pure virtual. Every child
-//                 overrides them, and a Record pointer calls the child's version.
+// INHERITANCE   : Customer, Movie, Cinema and Booking are child classes. They inherit the 'id'
+//                 variable and the getID() and getFileName() methods from Record.
+// ENCAPSULATION : 'id' is protected (children can use it, the outside cannot);
+//                 other code reads it through the getter getID().
+// POLYMORPHISM  : display() and loadFromFile() have the SAME NAME in the parent and in
+//                 every child, but each child has a DIFFERENT implementation.
 // =====================================================================================
 class Record {
 protected:
     string id;                              // e.g. M-001, I-001, B-001
 
 public:
-    Record(const string &recordID = "") : id(recordID) {}      // constructor
-    virtual ~Record() {}                                       // virtual destructor
+    Record() {                              // constructor
+        id = "";
+    }
 
-    string getID() const { return id; }
-    string getFileName() const { return id + ".txt"; }
+    Record(string recordID) {               // constructor with a value
+        id = recordID;
+    }
 
-    virtual string listLine() const = 0;        // one-line text, e.g. "M-001 Forgotten Island"
-    virtual void display() const = 0;           // full details on screen
-    virtual bool loadFromFile() = 0;            // fills the object from its own .txt file
+    string getID() {
+        return id;
+    }
+
+    string getFileName() {
+        return id + ".txt";
+    }
+
+    void display() {                        // parent version: only the ID
+        cout << id << "\n";
+    }
+
+    bool loadFromFile() {                   // parent version: nothing to load
+        return false;
+    }
 };
 
 // =====================================================================================
-// CLASS: Customer  (the details asked from the customer)
+// CLASS: Customer  (CHILD of Record) - data comes from the CUSTOMER block's C-XXX.txt
+// A customer is registered once (and gets a C-XXX ID); a booking only needs that ID.
 // =====================================================================================
-class Customer {
+class Customer : public Record {
 private:
-    string name;
+    string name;                // shown as "Rose Marie A. Reyes"
     string mobile;
     string email;
 
 public:
-    Customer() : name(""), mobile(""), email("") {}            // default constructor
-    Customer(const string &custName, const string &custMobile, const string &custEmail)
-        : name(custName), mobile(custMobile), email(custEmail) {}
+    Customer() {
+        name = "";
+        mobile = "";
+        email = "";
+    }
 
-    string getName() const { return name; }
-    string getMobile() const { return mobile; }
-    string getEmail() const { return email; }
+    Customer(string customerID) {
+        id = customerID;                    // 'id' is inherited from Record
+        name = "";
+        mobile = "";
+        email = "";
+    }
 
-    // Asks the customer for every detail, with input validation
-    void promptDetails() {
-        name = getNonEmptyLine(" Customer name : ");
-        cout << " Mobile number (+63XXXXXXXXXX) : ";
-        mobile = ::getMobile();     // '::' = the global input function, not this class's getter
-        cout << " Email address : ";
-        email = ::getEmail();
+    Customer(string customerID, string custName, string custMobile, string custEmail) {
+        id = customerID;
+        name = custName;
+        mobile = custMobile;
+        email = custEmail;
+    }
+
+    string getName() { return name; }
+    string getMobile() { return mobile; }
+    string getEmail() { return email; }
+
+    // Same name as Record::display(), different implementation
+    void display() {
+        cout << name << "\n";
+        cout << "     Mobile : " << mobile << "\n";
+        cout << "     Email  : " << email << "\n";
+    }
+
+    /* C-XXX.txt (one value per line):
+     *  0 Last, Given Name MI      1 address       2 mobile number
+     *  3 birthday                 4 email         5 Customer ID # C-XXX */
+    bool loadFromFile() {
+        string lines[MAX_FILE_LINES];
+        int count = readFileLines(getFileName(), lines, MAX_FILE_LINES);
+        if (count < 5) return false;
+
+        name = flipName(lines[0]);
+        mobile = lines[2];
+        email = lines[4];
+        return (name != "");
     }
 };
 
@@ -520,16 +478,29 @@ private:
     string rating;
 
 public:
-    Movie(const string &movieID = "", const string &movieName = "")
-        : Record(movieID), name(movieName), genre(""), startDate(""), endDate(""), rating("") {}
+    Movie() {
+        name = "";
+        genre = "";
+        startDate = "";
+        endDate = "";
+        rating = "";
+    }
 
-    string getName() const { return name; }
-    string getGenre() const { return genre; }
-    string getRating() const { return rating; }
+    Movie(string movieID, string movieName) {
+        id = movieID;                       // 'id' is inherited from Record
+        name = movieName;
+        genre = "";
+        startDate = "";
+        endDate = "";
+        rating = "";
+    }
 
-    virtual string listLine() const { return id + " " + name; }
+    string getName() { return name; }
+    string getGenre() { return genre; }
+    string getRating() { return rating; }
 
-    virtual void display() const {
+    // Same name as Record::display(), different implementation
+    void display() {
         cout << name << "\n";
         cout << "     Genre  : " << genre << "   Rating: " << rating << "\n";
         if (startDate != "" && endDate != "") {
@@ -538,7 +509,7 @@ public:
     }
 
     // M-XXX.txt: name / genre / Start date: ... / End date: ... / Rating: ... / ...
-    virtual bool loadFromFile() {
+    bool loadFromFile() {
         string lines[MAX_FILE_LINES];
         int count = readFileLines(getFileName(), lines, MAX_FILE_LINES);
         if (count < 1) return false;
@@ -564,25 +535,38 @@ private:
     string type;
 
 public:
-    Cinema(const string &cinemaID = "", const string &cinemaName = "")
-        : Record(cinemaID), name(cinemaName), rows(0), seatsPerRow(0), price(0), type("") {}
+    Cinema() {
+        name = "";
+        rows = 0;
+        seatsPerRow = 0;
+        price = 0;
+        type = "";
+    }
 
-    string getName() const { return name; }
-    int getRows() const { return rows; }
-    int getSeatsPerRow() const { return seatsPerRow; }
-    int getCapacity() const { return rows * seatsPerRow; }
-    double getPrice() const { return price; }
+    Cinema(string cinemaID, string cinemaName) {
+        id = cinemaID;                      // 'id' is inherited from Record
+        name = cinemaName;
+        rows = 0;
+        seatsPerRow = 0;
+        price = 0;
+        type = "";
+    }
+
+    string getName() { return name; }
+    int getRows() { return rows; }
+    int getSeatsPerRow() { return seatsPerRow; }
+    int getCapacity() { return rows * seatsPerRow; }
+    double getPrice() { return price; }
 
     // A cinema can only be booked if its layout fits the seat names A1..Z50 and it has a price
-    bool isUsable() const {
+    bool isUsable() {
         return (rows >= 1 && rows <= MAX_ROWS &&
                 seatsPerRow >= 1 && seatsPerRow <= MAX_SEATS_PER_ROW &&
                 price > 0);
     }
 
-    virtual string listLine() const { return id + " " + name; }
-
-    virtual void display() const {
+    // Same name as Record::display(), different implementation
+    void display() {
         cout << name << "\n";
         cout << "     Type   : " << type << "   Capacity: " << getCapacity() << "\n";
         cout << "     Price  : PHP " << formatMoney(price) << " per seat\n";
@@ -592,7 +576,7 @@ public:
      *  0 name              1 address            2 Number of rows: N
      *  3 Number of seats per row: N             4 Capacity: N
      *  5 contact number    6 Price: N           7 Cinema type: X      8 code */
-    virtual bool loadFromFile() {
+    bool loadFromFile() {
         string lines[MAX_FILE_LINES];
         int count = readFileLines(getFileName(), lines, MAX_FILE_LINES);
         if (count < 8) return false;
@@ -611,63 +595,91 @@ public:
 // =====================================================================================
 class Booking : public Record {
 private:
-    Customer customer;          // composition: a booking HAS a customer
+    Customer customer;          // a booking HAS a customer (an object inside an object)
     string payment;
     string movieName;
     string cinemaName;
     string seatText;            // "J21 J22 J23"
     string totalText;           // "" until CHECK AVAILABILITY runs
 
-    // Writes the booking in the file format; 'prefix' is put before every line
-    void writeTo(ostream &out, const string &prefix) const {
-        out << prefix << "Customer name: " << customer.getName() << "\n";
-        out << prefix << customer.getMobile() << "\n";
-        out << prefix << customer.getEmail() << "\n";
-        out << prefix << "Type of payment: " << payment << "\n";
-        out << prefix << "Movie name: " << movieName << "\n";
-        out << prefix << "Cinema: " << cinemaName << "\n";
-        out << prefix << "Seat number/s: " << seatText << "\n";
-        out << prefix << id << "\n";
+public:
+    Booking() {
+        payment = "";
+        movieName = "";
+        cinemaName = "";
+        seatText = "";
+        totalText = "";
+    }
+
+    Booking(string bookingID) {
+        id = bookingID;                     // 'id' is inherited from Record
+        payment = "";
+        movieName = "";
+        cinemaName = "";
+        seatText = "";
+        totalText = "";
+    }
+
+    Booking(string bookingID, Customer cust, string pay,
+            string movie, string cinema, string seats) {
+        id = bookingID;
+        customer = cust;
+        payment = pay;
+        movieName = movie;
+        cinemaName = cinema;
+        seatText = seats;
+        totalText = "";
+    }
+
+    string getPayment() { return payment; }
+    string getMovieName() { return movieName; }
+    string getCinemaName() { return cinemaName; }
+    string getSeatText() { return seatText; }
+    string getTotalText() { return totalText; }
+    void setTotalText(string total) { totalText = total; }
+
+    // Same name as Record::display(), different implementation
+    void display() {
+        cout << " Customer name: " << customer.getName() << "\n";
+        cout << " " << customer.getMobile() << "\n";
+        cout << " " << customer.getEmail() << "\n";
+        cout << " Type of payment: " << payment << "\n";
+        cout << " Movie name: " << movieName << "\n";
+        cout << " Cinema: " << cinemaName << "\n";
+        cout << " Seat number/s: " << seatText << "\n";
+        cout << " " << id << "\n";
         if (totalText != "") {
-            out << prefix << "Total payment: " << totalText << "\n";
+            cout << " Total payment: " << totalText << "\n";
         }
     }
 
-public:
-    Booking(const string &bookingID = "") : Record(bookingID) {}
-
-    Booking(const string &bookingID, const Customer &cust, const string &pay,
-            const string &movie, const string &cinema, const string &seats)
-        : Record(bookingID), customer(cust), payment(pay), movieName(movie),
-          cinemaName(cinema), seatText(seats), totalText("") {}
-
-    string getPayment() const { return payment; }
-    string getMovieName() const { return movieName; }
-    string getCinemaName() const { return cinemaName; }
-    string getSeatText() const { return seatText; }
-    string getTotalText() const { return totalText; }
-    void setTotalText(const string &total) { totalText = total; }
-
-    virtual string listLine() const { return id + " " + totalText; }
-
-    virtual void display() const { writeTo(cout, " "); }
-
     // Creates (or overwrites) B-XXX.txt
-    bool saveToFile() const {
-        ofstream out(getFileName().c_str());
+    bool saveToFile() {
+        ofstream out(getFileName());
         if (!out.is_open()) return false;
-        writeTo(out, "");
+        out << "Customer name: " << customer.getName() << "\n";
+        out << customer.getMobile() << "\n";
+        out << customer.getEmail() << "\n";
+        out << "Type of payment: " << payment << "\n";
+        out << "Movie name: " << movieName << "\n";
+        out << "Cinema: " << cinemaName << "\n";
+        out << "Seat number/s: " << seatText << "\n";
+        out << id << "\n";
+        if (totalText != "") {
+            out << "Total payment: " << totalText << "\n";
+        }
         out.close();
         return true;
     }
 
     // Reads B-XXX.txt back into the object
-    virtual bool loadFromFile() {
+    bool loadFromFile() {
         string lines[MAX_FILE_LINES];
         int count = readFileLines(getFileName(), lines, MAX_FILE_LINES);
         if (count < 8) return false;
 
-        customer = Customer(extractAfterColon(lines[0]), lines[1], lines[2]);
+        // The booking file has no customer ID line (format fixed by the handout)
+        customer = Customer("", extractAfterColon(lines[0]), lines[1], lines[2]);
         payment = extractAfterColon(lines[3]);
         movieName = extractAfterColon(lines[4]);
         cinemaName = extractAfterColon(lines[5]);
@@ -684,37 +696,38 @@ class SeatMap {
 private:
     int rows;
     int seatsPerRow;
-    int *cells;                             // POINTER: dynamic array, 0 = free, 1 = reserved
-
-    SeatMap(const SeatMap &other);              // copying is disabled (the object owns 'cells')
-    SeatMap &operator=(const SeatMap &other);
+    int cells[MAX_ROWS][MAX_SEATS_PER_ROW];     // 0 = free, 1 = reserved
 
 public:
-    SeatMap(int numRows, int numSeatsPerRow) : rows(numRows), seatsPerRow(numSeatsPerRow) {
-        cells = new int[rows * seatsPerRow];    // POINTER: memory is reserved here
-        for (int i = 0; i < rows * seatsPerRow; i++) {
-            cells[i] = 0;
+    SeatMap() {
+        setLayout(0, 0);
+    }
+
+    // Sets the size of the grid and frees every seat
+    void setLayout(int numRows, int numSeatsPerRow) {
+        rows = numRows;
+        seatsPerRow = numSeatsPerRow;
+        for (int r = 0; r < MAX_ROWS; r++) {
+            for (int c = 0; c < MAX_SEATS_PER_ROW; c++) {
+                cells[r][c] = 0;
+            }
         }
     }
 
-    ~SeatMap() {
-        delete [] cells;                        // POINTER: memory is given back here
-    }
-
-    int getCapacity() const { return rows * seatsPerRow; }
+    int getCapacity() { return rows * seatsPerRow; }
 
     // True if the seat name (e.g. J20) exists in this cinema's layout
-    bool seatExists(const string &seat) const {
+    bool seatExists(const string &seat) {
         int rowIndex, seatNo;
         if (!parseSeat(seat, rowIndex, seatNo)) return false;
         return (rowIndex < rows) && (seatNo <= seatsPerRow);
     }
 
-    bool isReserved(const string &seat) const {
+    bool isReserved(const string &seat) {
         int rowIndex, seatNo;
         if (!seatExists(seat)) return false;
         parseSeat(seat, rowIndex, seatNo);
-        return cells[rowIndex * seatsPerRow + (seatNo - 1)] == 1;
+        return cells[rowIndex][seatNo - 1] == 1;
     }
 
     // Sets one seat to value (1 = reserve, 0 = free)
@@ -722,7 +735,7 @@ public:
         int rowIndex, seatNo;
         if (!seatExists(seat)) return;
         parseSeat(seat, rowIndex, seatNo);
-        cells[rowIndex * seatsPerRow + (seatNo - 1)] = value;
+        cells[rowIndex][seatNo - 1] = value;
     }
 
     // Reserves every seat of a text such as "A1 A2 C10"
@@ -734,16 +747,18 @@ public:
         }
     }
 
-    int countRemaining() const {
+    int countRemaining() {
         int available = 0;
-        for (int i = 0; i < rows * seatsPerRow; i++) {
-            if (cells[i] == 0) available++;
+        for (int r = 0; r < rows; r++) {
+            for (int c = 0; c < seatsPerRow; c++) {
+                if (cells[r][c] == 0) available++;
+            }
         }
         return available;
     }
 
     // Displays the grid of free [ ] and reserved [X] seats
-    void display() const {
+    void display() {
         int mapWidth = 3 + seatsPerRow * 4;
         int screenLineWidth = mapWidth > LINE_WIDTH ? mapWidth : LINE_WIDTH;
 
@@ -764,7 +779,7 @@ public:
             char letter = (char)('A' + r);
             cout << letter << "  ";
             for (int c = 0; c < seatsPerRow; c++) {
-                if (cells[r * seatsPerRow + c] == 1) cout << "[X] ";
+                if (cells[r][c] == 1) cout << "[X] ";
                 else cout << "[ ] ";
             }
             cout << "\n";
@@ -774,36 +789,55 @@ public:
 };
 
 // =====================================================================================
-// CLASS: BookingList - Booking List.txt (confirmed bookings) and Booking Counter.txt
+// CLASS: RecordList  (PARENT class) - a list file such as "Booking List.txt"
+// -------------------------------------------------------------------------------------
+// Every line of a list file is "ID text", for example:
+//      C-001 Reyes, Rose Marie A.        M-001 Forgotten Island        B-001 900.00
+// A second file (the counter) remembers the last number used, so IDs are never reused.
+//
+// INHERITANCE   : CustomerList, MovieList, CinemaList and BookingList are child classes.
+// ENCAPSULATION : the file names and the arrays are protected; use the methods below.
+// POLYMORPHISM  : display() has the same name in the parent and in BookingList.
 // =====================================================================================
-class BookingList {
-private:
-    string ids[MAX_BOOKINGS];
-    string totals[MAX_BOOKINGS];
+class RecordList {
+protected:
+    string listFileName;                    // e.g. "Booking List.txt"
+    string counterFileName;                 // e.g. "Booking Counter.txt"
+    string ids[MAX_RECORDS];
+    string texts[MAX_RECORDS];              // the rest of each line (name, total, ...)
     int count;
 
 public:
-    BookingList() : count(0) {}
+    RecordList() {
+        listFileName = "";
+        counterFileName = "";
+        count = 0;
+    }
 
-    int getCount() const { return count; }
-    string getID(int i) const { return (i >= 0 && i < count) ? ids[i] : ""; }
-    string getTotal(int i) const { return (i >= 0 && i < count) ? totals[i] : ""; }
+    RecordList(string listFile, string counterFile) {
+        listFileName = listFile;
+        counterFileName = counterFile;
+        count = 0;
+    }
 
-    // Reads Booking List.txt (a missing file means no bookings yet)
+    int getCount() { return count; }
+    string getID(int i) { return (i >= 0 && i < count) ? ids[i] : ""; }
+    string getText(int i) { return (i >= 0 && i < count) ? texts[i] : ""; }
+
+    // Reads the list file (a missing file means the list is empty)
     int load() {
         count = 0;
-        ifstream in("Booking List.txt");
+        ifstream in(listFileName);
         if (!in.is_open()) return 0;
 
         string line;
-        while (count < MAX_BOOKINGS && getline(in, line)) {
+        while (count < MAX_RECORDS && getline(in, line)) {
             line = trim(line);
             int index = 0;
             string idToken = extractNextToken(line, index);
-            string totalToken = extractNextToken(line, index);
-            if (idToken != "" && totalToken != "") {
+            if (idToken != "") {
                 ids[count] = idToken;
-                totals[count] = totalToken;
+                texts[count] = trim(cutText(line, index, textLength(line)));
                 count++;
             }
         }
@@ -811,63 +845,51 @@ public:
         return count;
     }
 
-    // Position of a booking ID in the list, or -1
-    int findIndex(const string &bookingID) const {
-        string target = toUpper(bookingID);
+    // Position of an ID in the list, or -1
+    int findIndex(const string &recordID) {
+        string target = toUpper(recordID);
         for (int i = 0; i < count; i++) {
             if (toUpper(ids[i]) == target) return i;
         }
         return -1;
     }
 
-    // Adds a confirmed booking to the end of the file and to memory
-    bool add(const string &bookingID, const string &total) {
-        if (count >= MAX_BOOKINGS) return false;
-        ofstream out("Booking List.txt", ios::app);
+    // Adds a line to the end of the file and to memory
+    bool add(const string &recordID, const string &text) {
+        if (count >= MAX_RECORDS) return false;
+        ofstream out(listFileName, ios::app);
         if (!out.is_open()) return false;
-        out << bookingID << " " << total << "\n";
+        out << recordID << " " << text << "\n";
         out.close();
-        ids[count] = bookingID;
-        totals[count] = total;
+        ids[count] = recordID;
+        texts[count] = text;
         count++;
         return true;
     }
 
-    // Removes one booking and rewrites the file without it
+    // Removes one line and rewrites the file without it
     bool removeAt(int index) {
         if (index < 0 || index >= count) return false;
-        ofstream out("Booking List.txt");
+        ofstream out(listFileName);
         if (!out.is_open()) return false;
         for (int i = 0; i < count; i++) {
             if (i != index) {
-                out << ids[i] << " " << totals[i] << "\n";
+                out << ids[i] << " " << texts[i] << "\n";
             }
         }
         out.close();
         for (int i = index; i < count - 1; i++) {
             ids[i] = ids[i + 1];
-            totals[i] = totals[i + 1];
+            texts[i] = texts[i + 1];
         }
         count--;
         return true;
     }
 
-    // Adds up every total in the list
-    double sumTotals() const {
-        double grandTotal = 0;
-        for (int i = 0; i < count; i++) {
-            double value = 0;
-            if (parseDecimal(totals[i], value)) {
-                grandTotal += value;
-            }
-        }
-        return grandTotal;
-    }
-
-    // Booking Counter.txt keeps the last number used, so numbers are never reused
-    static int readCounter() {
+    // The counter file keeps the last number used
+    int readCounter() {
         int lastNumber = 0;
-        ifstream in("Booking Counter.txt");
+        ifstream in(counterFileName);
         if (in.is_open()) {
             in >> lastNumber;
             in.close();
@@ -875,157 +897,170 @@ public:
         return lastNumber;
     }
 
-    static void writeCounter(int number) {
-        ofstream out("Booking Counter.txt");
+    void writeCounter(int number) {
+        ofstream out(counterFileName);
         if (out.is_open()) {
             out << number;
             out.close();
         }
     }
+
+    // Parent version: prints every line as "ID text"
+    void display() {
+        for (int i = 0; i < count; i++) {
+            cout << " " << ids[i] << "  " << texts[i] << "\n";
+        }
+    }
 };
 
-// POLYMORPHISM: one function works for a Movie, a Cinema or a Booking.
-// The Record pointer calls the display() of the real (child) object.
-void showRecord(const Record *record) {
-    record->display();
-}
+// ---------- Children of RecordList: each one only sets its own file names ----------
+
+class CustomerList : public RecordList {
+public:
+    CustomerList() {
+        listFileName = "Customer List.txt";
+        counterFileName = "Customer Counter.txt";
+    }
+};
+
+class MovieList : public RecordList {
+public:
+    MovieList() {
+        listFileName = "Movie List.txt";
+        counterFileName = "Movie Counter.txt";
+    }
+};
+
+class CinemaList : public RecordList {
+public:
+    CinemaList() {
+        listFileName = "Cinema List.txt";
+        counterFileName = "Cinema Counter.txt";
+    }
+};
+
+// Booking List.txt: every line is "B-XXX total", so this child adds the total payments
+class BookingList : public RecordList {
+public:
+    BookingList() {
+        listFileName = "Booking List.txt";
+        counterFileName = "Booking Counter.txt";
+    }
+
+    // Adds up every total in the list
+    double sumTotals() {
+        double grandTotal = 0;
+        for (int i = 0; i < count; i++) {
+            double value = 0;
+            if (parseDecimal(texts[i], value)) {
+                grandTotal += value;
+            }
+        }
+        return grandTotal;
+    }
+
+    // Same name as RecordList::display(), different implementation
+    void display() {
+        cout << " Booking ID    Total\n";
+        drawLine('-', LINE_WIDTH);
+        for (int i = 0; i < count; i++) {
+            cout << " " << ids[i] << "         PHP " << texts[i] << "\n";
+        }
+    }
+};
 
 // =====================================================================================
 // CLASS: BookingSystem - menus and workflows of the BOOKING block
 // =====================================================================================
 class BookingSystem {
 private:
-    // POINTER: the catalog is an array of pointers to objects created with 'new'
-    Movie *movies[MAX_MOVIES];
-    Cinema *cinemas[MAX_CINEMAS];
+    Movie movies[MAX_MOVIES];               // array of Movie objects
+    Cinema cinemas[MAX_CINEMAS];            // array of Cinema objects
     int movieCount;
     int cinemaCount;
 
-    // POINTER: what the customer is currently booking (point into the arrays above)
+    // POINTER: these point to the movie and cinema the customer is booking
     Movie *selectedMovie;
     Cinema *selectedCinema;
-    SeatMap *seatMap;                       // POINTER: seat grid of the selected movie + cinema
 
+    SeatMap seatMap;                        // seat grid of the selected movie + cinema
     BookingList ledger;                     // Booking List.txt in memory
-
-    BookingSystem(const BookingSystem &other);              // copying is disabled
-    BookingSystem &operator=(const BookingSystem &other);
+    CustomerList customerList;              // Customer List.txt (written by the CUSTOMER block)
+    MovieList movieList;                    // Movie List.txt (written by the MOVIE block)
+    CinemaList cinemaList;                  // Cinema List.txt (written by the CINEMA block)
 
     // ---------- Catalog (reads the MOVIE and CINEMA blocks' files) ----------
 
-    void clearCatalog() {
-        for (int i = 0; i < movieCount; i++) {
-            delete movies[i];
-        }
-        for (int i = 0; i < cinemaCount; i++) {
-            delete cinemas[i];
-        }
-        movieCount = 0;
-        cinemaCount = 0;
-    }
-
     // Reads Movie List.txt, then every M-XXX.txt in it
     void loadMovies() {
-        ifstream in("Movie List.txt");
-        if (!in.is_open()) return;
-
-        string line;
-        while (movieCount < MAX_MOVIES && getline(in, line)) {
-            line = trim(line);
-            int index = 0;
-            string idToken = extractNextToken(line, index);
-            string listName = trim(cutText(line, index, textLength(line)));
-            if (idToken == "") continue;
-
-            Movie *movie = new Movie(toUpper(idToken), listName);   // POINTER: new object
-            movie->loadFromFile();          // fills genre, rating, dates if the file exists
-            if (movie->getName() == "") {
-                delete movie;
-            } else {
+        movieList.load();
+        for (int i = 0; i < movieList.getCount() && movieCount < MAX_MOVIES; i++) {
+            Movie movie(toUpper(movieList.getID(i)), movieList.getText(i));
+            movie.loadFromFile();           // fills genre, rating, dates if the file exists
+            if (movie.getName() != "") {
                 movies[movieCount] = movie;
                 movieCount++;
             }
         }
-        in.close();
     }
 
     // Reads Cinema List.txt, then every I-XXX.txt in it (cinemas without a usable file are skipped)
     void loadCinemas() {
-        ifstream in("Cinema List.txt");
-        if (!in.is_open()) return;
-
-        string line;
-        while (cinemaCount < MAX_CINEMAS && getline(in, line)) {
-            line = trim(line);
-            int index = 0;
-            string idToken = extractNextToken(line, index);
-            string listName = trim(cutText(line, index, textLength(line)));
-            if (idToken == "") continue;
-
-            Cinema *cinema = new Cinema(toUpper(idToken), listName);    // POINTER: new object
-            if (cinema->loadFromFile() && cinema->isUsable()) {
+        cinemaList.load();
+        for (int i = 0; i < cinemaList.getCount() && cinemaCount < MAX_CINEMAS; i++) {
+            Cinema cinema(toUpper(cinemaList.getID(i)), cinemaList.getText(i));
+            if (cinema.loadFromFile() && cinema.isUsable()) {
                 cinemas[cinemaCount] = cinema;
                 cinemaCount++;
-            } else {
-                delete cinema;
             }
         }
-        in.close();
     }
 
     void loadCatalog() {
-        clearCatalog();
+        movieCount = 0;
+        cinemaCount = 0;
         loadMovies();
         loadCinemas();
     }
 
-    // Builds the seat grid of a movie in a cinema from the confirmed bookings.
-    // Seats of a deleted booking are free again because its file is gone from the list.
-    SeatMap *buildSeatMap(const Movie *movie, const Cinema *cinema) {
-        SeatMap *map = new SeatMap(cinema->getRows(), cinema->getSeatsPerRow());   // POINTER
+    // Builds the seat grid of the selected movie in the selected cinema from the confirmed
+    // bookings. Seats of a deleted booking are free again because it is gone from the list.
+    void buildSeatMap() {
+        seatMap.setLayout(selectedCinema->getRows(), selectedCinema->getSeatsPerRow());
         ledger.load();
         for (int i = 0; i < ledger.getCount(); i++) {
             Booking saved(ledger.getID(i));
             if (saved.loadFromFile() &&
-                toUpper(saved.getMovieName()) == toUpper(movie->getName()) &&
-                toUpper(saved.getCinemaName()) == toUpper(cinema->getName())) {
-                map->reserveFromText(saved.getSeatText());
+                toUpper(saved.getMovieName()) == toUpper(selectedMovie->getName()) &&
+                toUpper(saved.getCinemaName()) == toUpper(selectedCinema->getName())) {
+                seatMap.reserveFromText(saved.getSeatText());
             }
         }
-        return map;
-    }
-
-    void releaseSelection() {
-        delete seatMap;                     // POINTER: delete on a null pointer is safe
-        seatMap = 0;
-        selectedMovie = 0;
-        selectedCinema = 0;
     }
 
     // ---------- Customer Workflow ----------
 
-    // GET BOOKING: returns a new Booking (caller deletes it), or 0 if no booking was made
-    Booking *getBooking() {
+    // GET BOOKING: fills 'booking' (passed by reference). Returns false if no booking was made.
+    bool getBooking(Booking &booking) {
         printTitle("CHOOSE A MOVIE");
         for (int i = 0; i < movieCount; i++) {
             cout << " [" << (i + 1) << "] ";
-            showRecord(movies[i]);          // POINTER: Record pointer, polymorphic call
+            movies[i].display();
         }
         drawLine('-', LINE_WIDTH);
         cout << " Choose a movie (1-" << movieCount << ") : ";
-        selectedMovie = movies[getIntInRange(1, movieCount) - 1];
+        selectedMovie = &movies[getIntInRange(1, movieCount) - 1];          // POINTER
 
         printTitle("CHOOSE A CINEMA");
         for (int i = 0; i < cinemaCount; i++) {
             cout << " [" << (i + 1) << "] ";
-            showRecord(cinemas[i]);         // POINTER: Record pointer, polymorphic call
+            cinemas[i].display();
         }
         drawLine('-', LINE_WIDTH);
         cout << " Choose a cinema (1-" << cinemaCount << ") : ";
-        selectedCinema = cinemas[getIntInRange(1, cinemaCount) - 1];
+        selectedCinema = &cinemas[getIntInRange(1, cinemaCount) - 1];       // POINTER
 
-        delete seatMap;
-        seatMap = buildSeatMap(selectedMovie, selectedCinema);
+        buildSeatMap();
 
         printTitle("SELECT SEATS");
         cout << " Movie  : " << selectedMovie->getName() << "\n";
@@ -1033,14 +1068,14 @@ private:
         cout << " Price  : PHP " << formatMoney(selectedCinema->getPrice()) << " per seat\n";
         drawLine('-', LINE_WIDTH);
         cout << "\n";
-        seatMap->display();
+        seatMap.display();
 
         // MP2: the customer sees the remaining seats BEFORE the booking is made
-        int remaining = seatMap->countRemaining();
-        cout << "\n Remaining seats: " << remaining << " / " << seatMap->getCapacity() << "\n";
+        int remaining = seatMap.countRemaining();
+        cout << "\n Remaining seats: " << remaining << " / " << seatMap.getCapacity() << "\n";
         if (remaining == 0) {
             cout << "\n Sorry, this movie is fully booked in this cinema.\n";
-            return 0;
+            return false;
         }
 
         string requestedSeats[MAX_SEATS_PER_BOOKING];
@@ -1054,9 +1089,38 @@ private:
             seatText += requestedSeats[i];
         }
 
-        printTitle("YOUR DETAILS");
+        // The customer was registered in the CUSTOMER block: only the customer ID is needed
+        printTitle("CUSTOMER");
         Customer customer;
-        customer.promptDetails();
+        bool customerFound = false;
+        bool cancelled = false;
+        do {
+            string idInput = getNonEmptyLine(" Customer ID (C-XXX, or 0 to cancel) : ");
+            if (idInput == "0") {
+                cancelled = true;
+            } else if (!isValidRecordID('C', idInput)) {
+                cout << "  ! Invalid format. Use C-XXX.\n";
+            } else {
+                idInput = toUpper(trim(idInput));
+                customerList.load();
+                if (customerList.findIndex(idInput) == -1) {
+                    cout << "  ! Customer " << idInput << " is not registered.\n";
+                } else {
+                    customer = Customer(idInput);
+                    if (customer.loadFromFile()) {
+                        customerFound = true;
+                    } else {
+                        cout << "  ! Unable to read the file of " << idInput << ".\n";
+                    }
+                }
+            }
+        } while (!customerFound && !cancelled);
+
+        if (cancelled) {
+            cout << "\n Booking cancelled.\n";
+            return false;
+        }
+        cout << "\n Welcome, " << customer.getName() << "!\n";
 
         cout << "\n Payment type:\n";
         for (int i = 0; i < NUM_PAYMENT_TYPES; i++) {
@@ -1066,24 +1130,25 @@ private:
         string payment = PAYMENT_TYPES[getIntInRange(1, NUM_PAYMENT_TYPES) - 1];
 
         // The ID is assigned only after all information was given
-        int newNumber = BookingList::readCounter() + 1;
+        int newNumber = ledger.readCounter() + 1;
         if (newNumber > MAX_BOOKING_NUMBER) {
             cout << "\n Sorry, booking limit reached.\n";
-            return 0;
+            return false;
         }
         string bookingID = makeID('B', newNumber);
 
-        Booking *booking = new Booking(bookingID, customer, payment,       // POINTER: new object
-                                       selectedMovie->getName(),
-                                       selectedCinema->getName(), seatText);
-        if (!booking->saveToFile()) {
+        booking = Booking(bookingID, customer, payment,
+                          selectedMovie->getName(),
+                          selectedCinema->getName(), seatText);
+        if (!booking.saveToFile()) {
             cout << "Unable to open file\n";
         }
         cout << "\n Your Booking ID is " << bookingID << "\n";
-        return booking;
+        return true;
     }
 
     // CHECK AVAILABILITY: verifies the seats, computes the total, saves and displays the order
+    // POINTER: 'booking' is a pointer to the Booking made in getBooking()
     void checkAvailability(Booking *booking) {
         string requestedSeats[MAX_SEATS_PER_BOOKING];
         bool overflow = false;
@@ -1091,7 +1156,7 @@ private:
 
         bool available = true;
         for (int i = 0; i < seatCount; i++) {
-            if (!seatMap->seatExists(requestedSeats[i]) || seatMap->isReserved(requestedSeats[i])) {
+            if (!seatMap.seatExists(requestedSeats[i]) || seatMap.isReserved(requestedSeats[i])) {
                 available = false;
             }
         }
@@ -1101,12 +1166,12 @@ private:
             booking->setTotalText(formatMoney(total));
             booking->saveToFile();                          // file now ends with the total
 
-            BookingList::writeCounter(toInt(cutText(booking->getID(), 2, BOOKING_ID_LENGTH)));
+            ledger.writeCounter(toInt(cutText(booking->getID(), 2, BOOKING_ID_LENGTH)));
             ledger.load();
             ledger.add(booking->getID(), booking->getTotalText());   // only now: information is complete
 
             for (int i = 0; i < seatCount; i++) {
-                seatMap->setSeat(requestedSeats[i], 1);
+                seatMap.setSeat(requestedSeats[i], 1);
             }
         } else {
             booking->setTotalText("NOT AVAILABLE");
@@ -1121,8 +1186,8 @@ private:
         cout << "Total payment: " << booking->getTotalText() << "\n";
 
         if (available) {
-            cout << "Remaining seats: " << seatMap->countRemaining()
-                 << " / " << seatMap->getCapacity() << "\n";
+            cout << "Remaining seats: " << seatMap.countRemaining()
+                 << " / " << seatMap.getCapacity() << "\n";
         } else {
             cout << "  ! Some seats are taken or invalid. Please try again.\n";
         }
@@ -1135,12 +1200,12 @@ private:
             return;
         }
 
-        Booking *booking = getBooking();        // POINTER: 0 means no booking was made
-        if (booking != 0) {
-            checkAvailability(booking);
-            delete booking;                     // POINTER: free the booking object
+        Booking booking;
+        if (getBooking(booking)) {
+            checkAvailability(&booking);                    // POINTER: address of the booking
         }
-        releaseSelection();
+        selectedMovie = 0;                                  // POINTER: no selection anymore
+        selectedCinema = 0;
     }
 
     // ---------- Manager Workflow ----------
@@ -1167,7 +1232,7 @@ private:
     void displayBooking() {
         printTitle("DISPLAY BOOKING");
         string bookingID = getNonEmptyLine(" Booking ID (B-XXX): ");
-        if (!isValidBookingID(bookingID)) {
+        if (!isValidRecordID('B', bookingID)) {
             cout << "  ! Invalid format. Use B-XXX.\n";
             return;
         }
@@ -1183,8 +1248,7 @@ private:
         cout << "\n";
         drawLine('-', LINE_WIDTH);
         if (booking.loadFromFile()) {
-            const Record *record = &booking;    // POINTER: base-class pointer to a Booking
-            record->display();                  // calls Booking::display()
+            booking.display();
         } else {
             cout << "Unable to open file\n";
         }
@@ -1200,11 +1264,7 @@ private:
             return;
         }
 
-        cout << " Booking ID    Total\n";
-        drawLine('-', LINE_WIDTH);
-        for (int i = 0; i < count; i++) {
-            cout << " " << ledger.getID(i) << "         PHP " << ledger.getTotal(i) << "\n";
-        }
+        ledger.display();                   // BookingList's own version of display()
         drawLine('-', LINE_WIDTH);
     }
 
@@ -1220,7 +1280,7 @@ private:
     void deleteBooking() {
         printTitle("DELETE BOOKING");
         string bookingID = getNonEmptyLine(" Booking ID (B-XXX): ");
-        if (!isValidBookingID(bookingID)) {
+        if (!isValidRecordID('B', bookingID)) {
             cout << "  ! Invalid format. Use B-XXX.\n";
             return;
         }
@@ -1271,12 +1331,11 @@ private:
     }
 
 public:
-    BookingSystem() : movieCount(0), cinemaCount(0),
-                      selectedMovie(0), selectedCinema(0), seatMap(0) {}
-
-    ~BookingSystem() {
-        clearCatalog();
-        releaseSelection();
+    BookingSystem() {
+        movieCount = 0;
+        cinemaCount = 0;
+        selectedMovie = 0;                  // POINTER: 0 means "points to nothing"
+        selectedCinema = 0;
     }
 
     // Main menu loop. Returns 0 on a normal exit, 1 if manager access was denied.

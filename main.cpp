@@ -11,8 +11,6 @@
 #include "naciongayo_header.h"
 
 int main() {
-    BookingSystem *app = new BookingSystem();   // POINTER: the program object lives on the heap
-    int exitCode = app->run();
-    delete app;                                 // POINTER: memory is given back before exit
-    return exitCode;
-}
+    BookingSystem app;          // object of the class that runs the whole program
+    return app.run();
+} 
