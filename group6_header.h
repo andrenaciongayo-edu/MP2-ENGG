@@ -1,9 +1,8 @@
-#ifndef BOOKING_HEADER_H
-#define BOOKING_HEADER_H
+#ifndef HEADER_H
+#define HEADER_H
 
 #include <iostream>
 #include <fstream>
-#include <string>
 #include <cstdio>
 
 using namespace std;
@@ -25,7 +24,7 @@ const int LINE_WIDTH = 46;          // Width of formatted screen titles
 const int RECORD_ID_LENGTH = 5;     // e.g. B-001, C-001
 const int BOOKING_ID_LENGTH = 5;
 const int MAX_BOOKING_NUMBER = 999;
-const int MAX_MANAGER_LOGIN_ATTEMPTS = 3;
+const int MAX_MANAGER_LOGIN_ATTEMPTS = 5;   // wrong codes allowed in total before the lock-out
 
 // =====================================================================================
 // Helper Functions & Tokenizer (same as MP1, except where marked NEW)
@@ -212,7 +211,7 @@ bool isValidRecordID(char prefix, string recordID) {
     return true;
 }
 
-//Turns "Reyes, Rose Marie A." (CUSTOMER block format) into "Rose Marie A. Reyes"
+// NEW (MP2): Turns "Reyes, Rose Marie A." (CUSTOMER block format) into "Rose Marie A. Reyes"
 string flipName(const string &fileName) {
     int len = textLength(fileName);
     int commaPos = -1;
@@ -240,7 +239,7 @@ string extractAfterColon(const string &line) {
     return trim(cutText(line, colonPos + 1, len));
 }
 
-// Reads up to maxLines lines of a file into an array (each line trimmed).
+// NEW (MP2): Reads up to maxLines lines of a file into an array (each line trimmed).
 // Returns the number of lines read, or -1 if the file cannot be opened.
 int readFileLines(const string &fileName, string lines[], int maxLines) {
     ifstream in(fileName);
@@ -371,13 +370,6 @@ int readSeatList(int minSeats, string seats[MAX_SEATS_PER_BOOKING]) {
 
 // =====================================================================================
 // CLASS: Record  (PARENT class)
-// -------------------------------------------------------------------------------------
-// INHERITANCE   : Customer, Movie, Cinema and Booking are child classes. They inherit the 'id'
-//                 variable and the getID() and getFileName() methods from Record.
-// ENCAPSULATION : 'id' is protected (children can use it, the outside cannot);
-//                 other code reads it through the getter getID().
-// POLYMORPHISM  : display() and loadFromFile() have the SAME NAME in the parent and in
-//                 every child, but each child has a DIFFERENT implementation.
 // =====================================================================================
 class Record {
 protected:
@@ -600,7 +592,7 @@ private:
     string movieName;
     string cinemaName;
     string seatText;            // "J21 J22 J23"
-    string totalText;           // "" until CHECK AVAILABILITY runs
+    string totalText;           // empty until CHECK AVAILABILITY runs
 
 public:
     Booking() {
@@ -1070,7 +1062,7 @@ private:
         cout << "\n";
         seatMap.display();
 
-        // MP2: the customer sees the remaining seats BEFORE the booking is made
+        // the customer sees the remaining seats BEFORE the booking is made
         int remaining = seatMap.countRemaining();
         cout << "\n Remaining seats: " << remaining << " / " << seatMap.getCapacity() << "\n";
         if (remaining == 0) {
@@ -1210,25 +1202,6 @@ private:
 
     // ---------- Manager Workflow ----------
 
-    bool verifyManager() {
-        bool verified = false;
-        int attempt = 0;
-        printTitle("MANAGER LOGIN");
-        while (attempt < MAX_MANAGER_LOGIN_ATTEMPTS && !verified) {
-            string code;
-            cout << " Manager code : ";
-            getline(cin, code);
-            if (trim(code) == MANAGER_CODE) {
-                verified = true;
-            } else {
-                cout << "  ! Wrong code. Attempts left: "
-                     << (MAX_MANAGER_LOGIN_ATTEMPTS - 1 - attempt) << "\n";
-            }
-            attempt++;
-        }
-        return verified;
-    }
-
     void displayBooking() {
         printTitle("DISPLAY BOOKING");
         string bookingID = getNonEmptyLine(" Booking ID (B-XXX): ");
@@ -1338,30 +1311,15 @@ public:
         selectedCinema = 0;
     }
 
-    // Main menu loop. Returns 0 on a normal exit, 1 if manager access was denied.
-    int run() {
-        int mainChoice = 0;
-        do {
-            printTitle("BOOKING MENU");
-            cout << "Welcome to the Movie Booking System!\n";
-            cout << "Please select an option:\n";
-            cout << "   [1] Customer\n";
-            cout << "   [2] Manager\n";
-            cout << "   [3] Exit\n";
-            cout << "\n Choice: ";
-            mainChoice = getIntInRange(1, 3);
+    // Entry points used by the main menu in main.cpp
+    // Booking block for a CUSTOMER: GET BOOKING, then CHECK AVAILABILITY
+    void runCustomer() {
+        customerFlow();
+    }
 
-            if (mainChoice == 1) {
-                customerFlow();
-            } else if (mainChoice == 2) {
-                if (!verifyManager()) {
-                    cout << "\n Access denied. Exiting Program...\n";
-                    return 1;
-                }
-                managerFlow();
-            }
-        } while (mainChoice != 3);
-        return 0;
+    // Booking block for the MANAGER: display, delete, total payments
+    void runManager() {
+        managerFlow();
     }
 };
 
