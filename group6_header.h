@@ -782,14 +782,6 @@ public:
 
 // =====================================================================================
 // CLASS: RecordList  (PARENT class) - a list file such as "Booking List.txt"
-// -------------------------------------------------------------------------------------
-// Every line of a list file is "ID text", for example:
-//      C-001 Reyes, Rose Marie A.        M-001 Forgotten Island        B-001 900.00
-// A second file (the counter) remembers the last number used, so IDs are never reused.
-//
-// INHERITANCE   : CustomerList, MovieList, CinemaList and BookingList are child classes.
-// ENCAPSULATION : the file names and the arrays are protected; use the methods below.
-// POLYMORPHISM  : display() has the same name in the parent and in BookingList.
 // =====================================================================================
 class RecordList {
 protected:
@@ -1323,4 +1315,14 @@ public:
     }
 };
 
+class CustomerSystem{
+
+};
+
+class MovieSystem{
+
+};
+class CinemaSystem{
+
+};
 #endif
