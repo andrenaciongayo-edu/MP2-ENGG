@@ -42,8 +42,11 @@ const int MOVIE_MOBILE_LENGTH = 13;         // +639 followed by 9 digits
 // ---------- CUSTOMER block constants ----------
 const int CUSTOMER_MIN_AGE = 18;            // only adults can register
 
+// ---------- CINEMA block constants ----------
+// To be moved here the constants from the Cinema block below.
+
 // =====================================================================================
-// Helper Functions & Tokenizer (same as MP1, except where marked NEW)
+// Helper Functions & Tokenizer
 // =====================================================================================
 
 // Calculates the length of a string
@@ -216,7 +219,7 @@ string makeID(char prefix, int number) {
     return id;
 }
 
-// NEW (MP2): Validates an ID such as B-001 or C-012 (pass by value so the caller's string is untouched)
+// Validates an ID such as B-001 or C-012 (pass by value so the caller's string is untouched)
 bool isValidRecordID(char prefix, string recordID) {
     recordID = toUpper(trim(recordID));
     if (textLength(recordID) != RECORD_ID_LENGTH) return false;
@@ -227,7 +230,7 @@ bool isValidRecordID(char prefix, string recordID) {
     return true;
 }
 
-// NEW (MP2): Turns "Reyes, Rose Marie A." (CUSTOMER block format) into "Rose Marie A. Reyes"
+// Turns "Reyes, Rose Marie A." (CUSTOMER block format) into "Rose Marie A. Reyes"
 string flipName(const string &fileName) {
     int len = textLength(fileName);
     int commaPos = -1;
@@ -599,7 +602,7 @@ public:
 };
 
 // =====================================================================================
-// CLASS: Cinema  (CHILD of Record) - data comes from the CINEMA block's I-XXX.txt
+// CLASS: Cinema  (CHILD of Record) - one I-XXX.txt file, written by the CINEMA block
 // =====================================================================================
 class Cinema : public Record {
 private:
@@ -2127,9 +2130,7 @@ public:
     }
 };
 // =====================================================================================
-// CINEMA block (integrated from cinemaa.cpp)
-// NOTE: its Cinema class is renamed CinemaData because the BOOKING block already
-// has a Cinema class (a read-only view of I-XXX.txt) in this header.
+// CINEMA block 
 // =====================================================================================
 //Cinema constants
 const int MAX_CINEMA_NUMBER = 999;       // codes go from I-001 to I-999
