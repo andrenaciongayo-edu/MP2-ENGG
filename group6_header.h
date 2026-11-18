@@ -3,7 +3,9 @@
 
 #include <iostream>
 #include <fstream>
+#include <string>
 #include <cstdio>
+#include <ctime>              // today's date, used to check that movie dates are in the future
 
 using namespace std;
 
@@ -25,6 +27,17 @@ const int RECORD_ID_LENGTH = 5;     // e.g. B-001, C-001
 const int BOOKING_ID_LENGTH = 5;
 const int MAX_BOOKING_NUMBER = 999;
 const int MAX_MANAGER_LOGIN_ATTEMPTS = 5;   // wrong codes allowed in total before the lock-out
+
+// ---------- MOVIE block constants ----------
+const int NUM_MOVIE_GENRES = 8;
+const string MOVIE_GENRES[NUM_MOVIE_GENRES] = {"Action", "Romance", "Comedy", "Drama", "Horror",
+                                               "Science Fiction", "Animated", "Documentary"};
+const int NUM_MOVIE_RATINGS = 5;
+const string MOVIE_RATINGS[NUM_MOVIE_RATINGS] = {"G", "PG", "R-13", "R-16", "R-18"};
+const int NUM_EMAIL_DOMAINS = 5;
+const string EMAIL_DOMAINS[NUM_EMAIL_DOMAINS] = {"gmail.com", "yahoo.com", "outlook.com",
+                                                 "hotmail.com", "icloud.com"};
+const int MOVIE_MOBILE_LENGTH = 13;         // +639 followed by 9 digits
 
 // =====================================================================================
 // Helper Functions & Tokenizer (same as MP1, except where marked NEW)
@@ -237,6 +250,15 @@ string extractAfterColon(const string &line) {
     }
     if (colonPos == -1) return trim(line);
     return trim(cutText(line, colonPos + 1, len));
+}
+
+// Position of 'input' in a list of allowed words (ignoring upper/lower case), or -1
+int findChoice(const string choices[], int numChoices, const string &input) {
+    string target = toUpper(trim(input));
+    for (int i = 0; i < numChoices; i++) {
+        if (toUpper(choices[i]) == target) return i;
+    }
+    return -1;
 }
 
 // NEW (MP2): Reads up to maxLines lines of a file into an array (each line trimmed).
@@ -459,7 +481,8 @@ public:
 };
 
 // =====================================================================================
-// CLASS: Movie  (CHILD of Record) - data comes from the MOVIE block's M-XXX.txt
+// CLASS: Movie  (CHILD of Record) - one M-XXX.txt file, written by the MOVIE block
+// and read by the BOOKING block
 // =====================================================================================
 class Movie : public Record {
 private:
@@ -468,6 +491,9 @@ private:
     string startDate;
     string endDate;
     string rating;
+    string contactPerson;
+    string mobile;
+    string email;
 
 public:
     Movie() {
@@ -476,6 +502,9 @@ public:
         startDate = "";
         endDate = "";
         rating = "";
+        contactPerson = "";
+        mobile = "";
+        email = "";
     }
 
     Movie(string movieID, string movieName) {
@@ -485,13 +514,29 @@ public:
         startDate = "";
         endDate = "";
         rating = "";
+        contactPerson = "";
+        mobile = "";
+        email = "";
     }
 
     string getName() { return name; }
     string getGenre() { return genre; }
     string getRating() { return rating; }
 
-    // Same name as Record::display(), different implementation
+    // Sets every detail asked by the MOVIE block (the values were already validated)
+    void setDetails(string movieName, string movieGenre, string start, string end,
+                    string movieRating, string contact, string movieMobile, string movieEmail) {
+        name = movieName;
+        genre = movieGenre;
+        startDate = start;
+        endDate = end;
+        rating = movieRating;
+        contactPerson = contact;
+        mobile = movieMobile;
+        email = movieEmail;
+    }
+
+    // Same name as Record::display()
     void display() {
         cout << name << "\n";
         cout << "     Genre  : " << genre << "   Rating: " << rating << "\n";
@@ -500,7 +545,39 @@ public:
         }
     }
 
-    // M-XXX.txt: name / genre / Start date: ... / End date: ... / Rating: ... / ...
+    void displayDetails() {
+        cout << name << "\n";
+        cout << genre << "\n";
+        cout << "Start date: " << startDate << "\n";
+        cout << "End date: " << endDate << "\n";
+        cout << "Rating: " << rating << "\n";
+        cout << contactPerson << "\n";
+        cout << "Mobile Number: " << mobile << "\n";
+        cout << "Email Address: " << email << "\n";
+        cout << "Movie ID # " << id << "\n";
+    }
+
+    // Creates (or overwrites) M-XXX.txt
+    bool saveToFile() {
+        ofstream out(getFileName());
+        if (!out.is_open()) return false;
+        out << name << "\n";
+        out << genre << "\n";
+        out << "Start date: " << startDate << "\n";
+        out << "End date: " << endDate << "\n";
+        out << "Rating: " << rating << "\n";
+        out << contactPerson << "\n";
+        out << "Mobile Number: " << mobile << "\n";
+        out << "Email Address: " << email << "\n";
+        out << "Movie ID # " << id << "\n";
+        out.close();
+        return true;
+    }
+
+    /* M-XXX.txt (one value per line):
+     *  0 name       1 genre       2 Start date: ...     3 End date: ...     4 Rating: ...
+     *  5 contact person           6 Mobile Number: ...  7 Email Address: ...
+     *  8 Movie ID # M-XXX */
     bool loadFromFile() {
         string lines[MAX_FILE_LINES];
         int count = readFileLines(getFileName(), lines, MAX_FILE_LINES);
@@ -511,6 +588,9 @@ public:
         if (count > 2) startDate = extractAfterColon(lines[2]);
         if (count > 3) endDate = extractAfterColon(lines[3]);
         if (count > 4) rating = extractAfterColon(lines[4]);
+        if (count > 5) contactPerson = lines[5];
+        if (count > 6) mobile = extractAfterColon(lines[6]);
+        if (count > 7) email = extractAfterColon(lines[7]);
         return true;
     }
 };
@@ -1319,8 +1399,318 @@ class CustomerSystem{
 
 };
 
-class MovieSystem{
 
+class MovieSystem {
+private:
+    MovieList movieList;                  
+
+    // ---------- Validations of the incoming inputs ----------
+
+    // MM/DD/YYYY with a real month, a real day, and a four-digit year
+    bool isValidDate(string date) {
+        if (textLength(date) != 10) return false;
+        if (date[2] != '/' || date[5] != '/') return false;
+        for (int i = 0; i < 10; i++) {
+            if (i != 2 && i != 5 && !isDigitChar(date[i])) return false;
+        }
+
+        int month = toInt(cutText(date, 0, 2));
+        int day = toInt(cutText(date, 3, 5));
+        int year = toInt(cutText(date, 6, 10));
+        if (month < 1 || month > 12 || year < 1) return false;
+
+        int daysInMonth = 31;
+        if (month == 4 || month == 6 || month == 9 || month == 11) {
+            daysInMonth = 30;
+        } else if (month == 2) {
+            bool leapYear = (year % 4 == 0 && year % 100 != 0) || (year % 400 == 0);
+            daysInMonth = leapYear ? 29 : 28;
+        }
+        return (day >= 1 && day <= daysInMonth);
+    }
+
+    // Turns MM/DD/YYYY into the number YYYYMMDD so that two dates can be compared
+    int convertDate(string date) {
+        int month = toInt(cutText(date, 0, 2));
+        int day = toInt(cutText(date, 3, 5));
+        int year = toInt(cutText(date, 6, 10));
+        return year * 10000 + month * 100 + day;
+    }
+
+    // True if the date is later than today
+    bool isFutureDate(string date) {
+        time_t currentTime = time(0);
+        tm *today = localtime(&currentTime);        // POINTER: points to the current date and time
+        if (today == 0) return false;
+
+        int currentDate = (today->tm_year + 1900) * 10000 + (today->tm_mon + 1) * 100 + today->tm_mday;
+        return (convertDate(date) > currentDate);
+    }
+
+    // +639 followed by 9 digits
+    bool isValidMobile(string mobile) {
+        if (textLength(mobile) != MOVIE_MOBILE_LENGTH) return false;
+        if (mobile[0] != '+' || mobile[1] != '6' || mobile[2] != '3' || mobile[3] != '9') return false;
+        for (int i = 4; i < MOVIE_MOBILE_LENGTH; i++) {
+            if (!isDigitChar(mobile[i])) return false;
+        }
+        return true;
+    }
+
+    // One '@' with something before it, and a domain that is one of EMAIL_DOMAINS
+    bool isValidEmail(string email) {
+        int len = textLength(email);
+        int atPos = -1;
+        for (int i = 0; i < len; i++) {
+            if (isBlankChar(email[i])) return false;
+            if (email[i] == '@') {
+                if (atPos != -1) return false;      // only one '@' allowed
+                atPos = i;
+            }
+        }
+        if (atPos < 1) return false;                // missing '@' or nothing before it
+
+        string domain = cutText(email, atPos + 1, len);
+        return (findChoice(EMAIL_DOMAINS, NUM_EMAIL_DOMAINS, domain) != -1);
+    }
+
+    // ---------- Movie IDs ----------
+
+    // Highest movie number found in Movie List.txt (the list must be loaded first)
+    int highestNumberInList() {
+        int highest = 0;
+        for (int i = 0; i < movieList.getCount(); i++) {
+            int number = toInt(cutText(movieList.getID(i), 2, RECORD_ID_LENGTH));
+            if (number > highest) highest = number;
+        }
+        return highest;
+    }
+
+    // True if a movie with this name is already in Movie List.txt (ignores upper/lower case)
+    bool movieAlreadyExists(string movieName) {
+        movieList.load();
+        for (int i = 0; i < movieList.getCount(); i++) {
+            if (toUpper(movieList.getText(i)) == toUpper(movieName)) return true;
+        }
+        return false;
+    }
+
+    // Asks for a movie ID until an existing movie is given. Returns false if the user typed 0 to cancel.
+    // 'movie' is passed by reference and is filled with the movie that was found.
+    bool askExistingMovie(string prompt, Movie &movie, int &listIndex) {
+        bool found = false;
+        bool cancelled = false;
+        do {
+            string idInput = getNonEmptyLine(prompt);
+            if (idInput == "0") {
+                cancelled = true;
+            } else if (!isValidRecordID('M', idInput)) {
+                cout << "  ! Invalid Movie ID. Use M-XXX.\n";
+            } else {
+                idInput = toUpper(trim(idInput));
+                movieList.load();
+                listIndex = movieList.findIndex(idInput);
+                if (listIndex == -1) {
+                    cout << "  ! Movie " << idInput << " does not exist.\n";
+                } else {
+                    movie = Movie(idInput, movieList.getText(listIndex));
+                    if (movie.loadFromFile()) {
+                        found = true;
+                    } else {
+                        cout << "  ! Movie file of " << idInput << " does not exist.\n";
+                    }
+                }
+            }
+        } while (!found && !cancelled);
+        return found;
+    }
+
+    // ADD MOVIE: asks for every detail, validates it, then assigns the movie ID
+    void addMovie() {
+        printTitle("ADD MOVIE");
+
+        string name = getNonEmptyLine(" Movie name : ");
+        while (movieAlreadyExists(name)) {
+            cout << "  ! This movie is already registered.\n";
+            name = getNonEmptyLine(" Please enter a different movie name : ");
+        }
+
+        cout << " Genres: ";
+        for (int i = 0; i < NUM_MOVIE_GENRES; i++) {
+            if (i > 0) cout << ", ";
+            cout << MOVIE_GENRES[i];
+        }
+        cout << "\n";
+        int genreIndex = -1;
+        do {
+            genreIndex = findChoice(MOVIE_GENRES, NUM_MOVIE_GENRES, getNonEmptyLine(" Genre : "));
+            if (genreIndex == -1) cout << "  ! Invalid genre. Choose one from the list.\n";
+        } while (genreIndex == -1);
+
+        string startDate;
+        bool validStart = false;
+        do {
+            startDate = getNonEmptyLine(" Start date (MM/DD/YYYY) : ");
+            if (!isValidDate(startDate)) {
+                cout << "  ! Invalid date. Use MM/DD/YYYY.\n";
+            } else if (!isFutureDate(startDate)) {
+                cout << "  ! The start date must be in the future.\n";
+            } else {
+                validStart = true;
+            }
+        } while (!validStart);
+
+        string endDate;
+        bool validEnd = false;
+        do {
+            endDate = getNonEmptyLine(" End date (MM/DD/YYYY) : ");
+            if (!isValidDate(endDate)) {
+                cout << "  ! Invalid date. Use MM/DD/YYYY.\n";
+            } else if (convertDate(endDate) <= convertDate(startDate)) {
+                cout << "  ! The end date must be after the start date.\n";
+            } else {
+                validEnd = true;
+            }
+        } while (!validEnd);
+
+        cout << " Ratings: G, PG, R-13, R-16, R-18\n";
+        int ratingIndex = -1;
+        do {
+            ratingIndex = findChoice(MOVIE_RATINGS, NUM_MOVIE_RATINGS, getNonEmptyLine(" Rating : "));
+            if (ratingIndex == -1) cout << "  ! Invalid rating. Choose one from the list.\n";
+        } while (ratingIndex == -1);
+
+        string contactPerson = getNonEmptyLine(" Contact person : ");
+
+        string mobile;
+        bool validMobile = false;
+        do {
+            mobile = getNonEmptyLine(" Mobile number (+639XXXXXXXXX) : ");
+            validMobile = isValidMobile(mobile);
+            if (!validMobile) cout << "  ! Invalid mobile number. Use +639 followed by 9 digits.\n";
+        } while (!validMobile);
+
+        string email;
+        bool validMail = false;
+        do {
+            email = getNonEmptyLine(" Email address : ");
+            validMail = isValidEmail(email);
+            if (!validMail) {
+                cout << "  ! Invalid email. Accepted: ";
+                for (int i = 0; i < NUM_EMAIL_DOMAINS; i++) {
+                    if (i > 0) cout << ", ";
+                    cout << "@" << EMAIL_DOMAINS[i];
+                }
+                cout << "\n";
+            }
+        } while (!validMail);
+
+        // The movie ID is assigned only after all the information was submitted.
+        // Numbers of deleted movies are never used again: the counter keeps the highest number ever used.
+        movieList.load();
+        int lastNumber = movieList.readCounter();
+        if (highestNumberInList() > lastNumber) lastNumber = highestNumberInList();
+        int newNumber = lastNumber + 1;
+        if (newNumber > MAX_BOOKING_NUMBER) {
+            cout << "\n Sorry, the movie limit was reached.\n";
+            return;
+        }
+        string movieID = makeID('M', newNumber);
+
+        Movie movie(movieID, name);
+        movie.setDetails(name, MOVIE_GENRES[genreIndex], startDate, endDate,
+                         MOVIE_RATINGS[ratingIndex], contactPerson, mobile, email);
+        if (!movie.saveToFile()) {
+            cout << "  ! Unable to create the movie file.\n";
+            return;
+        }
+        movieList.add(movieID, name);
+        movieList.writeCounter(newNumber);
+
+        cout << "\n Movie successfully added!\n";
+        cout << " Movie ID: " << movieID << "\n";
+    }
+
+    // SHOW ALL MOVIES: the list of movie IDs and names
+    void showAllMovies() {
+        printTitle("ALL MOVIES");
+        int count = movieList.load();
+        if (count == 0) {
+            cout << " No Movies Found.\n";
+        } else {
+            movieList.display();
+        }
+        drawLine('-', LINE_WIDTH);
+    }
+
+    // SHOW MOVIE: the contents of one movie file
+    void showMovie() {
+        printTitle("SHOW MOVIE");
+        Movie movie;
+        int listIndex = -1;
+        if (askExistingMovie(" Movie ID (M-XXX, or 0 to cancel) : ", movie, listIndex)) {
+            cout << "\n";
+            drawLine('-', LINE_WIDTH);
+            movie.displayDetails();
+            drawLine('-', LINE_WIDTH);
+        }
+    }
+
+    // DELETE MOVIE: the movie must exist first; then its file is deleted and the list is updated
+    void deleteMovie() {
+        printTitle("DELETE MOVIE");
+        Movie movie;
+        int listIndex = -1;
+        if (!askExistingMovie(" Movie ID to delete (M-XXX, or 0 to cancel) : ", movie, listIndex)) {
+            return;
+        }
+        cout << "  [OK] Movie " << movie.getID() << " exists. Proceeding with deletion...\n";
+
+        // Keep the counter at or above this number so the movie number cannot be used again
+        int deletedNumber = toInt(cutText(movie.getID(), 2, RECORD_ID_LENGTH));
+        if (deletedNumber > movieList.readCounter()) {
+            movieList.writeCounter(deletedNumber);
+        }
+
+        string fileName = movie.getFileName();
+        if (remove(fileName.c_str()) != 0) {
+            cout << "  ! Unable to delete the movie file.\n";
+            return;
+        }
+        if (!movieList.removeAt(listIndex)) {
+            cout << "  ! Unable to update Movie List.txt.\n";
+            return;
+        }
+        cout << "\n Movie " << movie.getID() << " deleted successfully.\n";
+    }
+
+public:
+    MovieSystem() {
+    }
+
+    // Movie menu loop (runs until the manager chooses Back)
+    void run() {
+        int choice = 0;
+        do {
+            printTitle("MOVIE MENU");
+            cout << "   [1] Add movie\n";
+            cout << "   [2] Show all movies\n";
+            cout << "   [3] Show movie\n";
+            cout << "   [4] Delete movie\n";
+            cout << "   [5] Back\n";
+            drawLine('-', LINE_WIDTH);
+            cout << " Choice: ";
+            choice = getIntInRange(1, 5);
+
+            switch (choice) {
+                case 1: addMovie(); break;
+                case 2: showAllMovies(); break;
+                case 3: showMovie(); break;
+                case 4: deleteMovie(); break;
+                default: cout << "\n Exiting Movie Block.\n"; break;
+            }
+        } while (choice != 5);
+    }
 };
 class CinemaSystem{
 
