@@ -1689,7 +1689,7 @@ public:
     }
 
     // Movie menu loop (runs until the manager chooses Back)
-    void run() {
+    void runManager() {
         int choice = 0;
         do {
             printTitle("MOVIE MENU");
@@ -1712,7 +1712,649 @@ public:
         } while (choice != 5);
     }
 };
-class CinemaSystem{
 
+//Cinema constants
+const int MAX_CINEMA_NUMBER = 999;       // codes go from I-001 to I-999
+const int MAX_TICKET_PRICE  = 100000;
+const int NUM_CINEMA_TYPES  = 7;
+const string CINEMA_TYPES[NUM_CINEMA_TYPES] = {      // single-dimension array
+    "Regular", "IMAX", "IMAX with 3D", "Digital Theater",
+    "ScreenX", "Director's Club", "4DX"
 };
+const string CINEMA_LIST_FILE    = "Cinema List.txt";
+const string CINEMA_COUNTER_FILE = "Cinema Counter.txt";   // last number ever used
+const int CINEMA_FILE_LINES = 9;
+
+// labels used inside I-XXX.txt (same text is used for saving and loading)
+const string LABEL_ROWS     = "Number of rows: ";
+const string LABEL_SEATS    = "Number of seats per row: ";
+const string LABEL_CAPACITY = "Capacity: ";
+const string LABEL_PRICE    = "Price: ";
+const string LABEL_TYPE     = "Cinema type: ";
+const string LABEL_CODE     = "Cinema Code # ";
+
+// CLASS 1: CinemaHelper
+class CinemaHelper {
+public:
+    static char lowerChar(char c) {
+        if (c >= 'A' && c <= 'Z') return c + ('a' - 'A');
+        return c;
+    }
+
+    static char upperChar(char c) {
+        if (c >= 'a' && c <= 'z') return c - ('a' - 'A');
+        return c;
+    }
+
+    static string toLowerText(const string &text) {
+        string result = text;
+        for (int i = 0; i < textLength(result); i++)
+            result[i] = lowerChar(result[i]);
+        return result;
+    }
+
+    static string toUpperText(const string &text) {
+        string result = text;
+        for (int i = 0; i < textLength(result); i++)
+            result[i] = upperChar(result[i]);
+        return result;
+    }
+
+    static bool isAllDigits(const string &text) {
+        int length = textLength(text);
+        if (length == 0) return false;
+        for (int i = 0; i < length; i++)
+            if (text[i] < '0' || text[i] > '9') return false;
+        return true;
+    }
+
+    static int toNumber(const string &text) {
+        int number = 0;
+        for (int i = 0; i < textLength(text); i++)
+            if (text[i] >= '0' && text[i] <= '9')
+                number = number * 10 + (text[i] - '0');
+        return number;
+    }
+
+    // part of a text: 'count' characters starting at 'start'
+    static string slice(const string &text, int start, int count) {
+        string result = "";
+        int length = textLength(text);
+        for (int i = start; i < start + count && i < length; i++)
+            result += text[i];
+        return result;
+    }
+
+    // everything after the first 'skip' characters
+    static string afterPrefix(const string &line, int skip) {
+        return slice(line, skip, textLength(line) - skip);
+    }
+
+    // 7 -> "I-007"
+    static string makeId(int number) {
+        string id = "I-";
+        id += char('0' + number / 100);
+        id += char('0' + (number / 10) % 10);
+        id += char('0' + number % 10);
+        return id;
+    }
+
+    static bool isValidId(const string &id) {
+        if (textLength(id) != RECORD_ID_LENGTH) return false;
+        if (id[0] != 'I' || id[1] != '-') return false;
+        return isAllDigits(slice(id, 2, 3));
+    }
+
+    // "I-007" -> 7
+    static int idNumber(const string &id) {
+        return toNumber(slice(id, 2, 3));
+    }
+
+    // +63 followed by 9 digits (landline) or 10 digits (mobile)
+    static bool isValidContact(const string &contact) {
+        int length = textLength(contact);
+        if (length != 12 && length != 13) return false;
+        if (slice(contact, 0, 3) != "+63") return false;
+        return isAllDigits(slice(contact, 3, length - 3));
+    }
+};
+
+// CLASS 2: CinemaRecord (PARENT / base class)
+// Holds what every record has: an id and a name.
+
+class CinemaRecord {
+protected:
+    string id;
+    string name;
+
+public:
+    // constructors
+    CinemaRecord() {
+        id = "";
+        name = "";
+    }
+
+    CinemaRecord(const string &recordId, const string &recordName) {
+        id = recordId;
+        name = recordName;
+    }
+
+    virtual ~CinemaRecord() {}
+
+    // getters
+    string getId() const { return id; }
+    string getName() const { return name; }
+    string getFileName() const { return id + ".txt"; }
+    string getListLine() const { return id + " " + name; }   // "I-001 SM North EDSA Cinema 1"
+
+    bool deleteFile() const {
+        return remove(getFileName().c_str()) == 0;
+    }
+
+    // pure virtual: the child class must provide these
+    virtual bool saveToFile() const = 0;
+    virtual bool loadFromFile() = 0;
+    virtual void display() const = 0;
+};
+
+// CLASS 3: CinemaData (CHILD class of CinemaRecord)
+// INHERITANCE: CinemaData gets id and name from CinemaRecord.
+
+class CinemaData : public CinemaRecord {
+private:
+    string address;
+    int rows;
+    int seatsPerRow;
+    int capacity;
+    string contact;
+    int price;
+    string type;
+
+public:
+    // constructors
+    CinemaData() : CinemaRecord() {
+        address = "";
+        rows = 0;
+        seatsPerRow = 0;
+        capacity = 0;
+        contact = "";
+        price = 0;
+        type = "";
+    }
+
+    CinemaData(const string &cinemaId, const string &cinemaName, const string &cinemaAddress,
+           int numRows, int numSeats, const string &cinemaContact,
+           int ticketPrice, const string &cinemaType)
+        : CinemaRecord(cinemaId, cinemaName) {
+        address = cinemaAddress;
+        rows = numRows;
+        seatsPerRow = numSeats;
+        capacity = numRows * numSeats;        // capacity is computed, not typed in
+        contact = cinemaContact;
+        price = ticketPrice;
+        type = cinemaType;
+    }
+
+    // getters (the Booking block can use these)
+    string getAddress() const { return address; }
+    int getRows() const { return rows; }
+    int getSeatsPerRow() const { return seatsPerRow; }
+    int getCapacity() const { return capacity; }
+    string getContact() const { return contact; }
+    int getPrice() const { return price; }
+    string getType() const { return type; }
+
+    // writes I-XXX.txt in the order the MP2 specification shows
+    bool saveToFile() const override {
+        ofstream out(getFileName().c_str());
+        if (!out.is_open()) return false;
+        out << name << "\n";
+        out << address << "\n";
+        out << LABEL_ROWS << rows << "\n";
+        out << LABEL_SEATS << seatsPerRow << "\n";
+        out << LABEL_CAPACITY << capacity << "\n";
+        out << contact << "\n";
+        out << LABEL_PRICE << price << "\n";
+        out << LABEL_TYPE << type << "\n";
+        out << LABEL_CODE << id << "\n";
+        out.close();
+        return true;
+    }
+
+    // reads I-XXX.txt back into this object
+    bool loadFromFile() override {
+        ifstream in(getFileName().c_str());
+        if (!in.is_open()) return false;
+
+        string lines[CINEMA_FILE_LINES];
+        int linesRead = 0;
+        while (linesRead < CINEMA_FILE_LINES && getline(in, lines[linesRead]))
+            linesRead++;
+        in.close();
+        if (linesRead < CINEMA_FILE_LINES) return false;
+
+        name = trim(lines[0]);
+        address = trim(lines[1]);
+        rows = CinemaHelper::toNumber(CinemaHelper::afterPrefix(lines[2], textLength(LABEL_ROWS)));
+        seatsPerRow = CinemaHelper::toNumber(CinemaHelper::afterPrefix(lines[3], textLength(LABEL_SEATS)));
+        capacity = CinemaHelper::toNumber(CinemaHelper::afterPrefix(lines[4], textLength(LABEL_CAPACITY)));
+        contact = trim(lines[5]);
+        price = CinemaHelper::toNumber(CinemaHelper::afterPrefix(lines[6], textLength(LABEL_PRICE)));
+        type = trim(CinemaHelper::afterPrefix(lines[7], textLength(LABEL_TYPE)));
+        return true;
+    }
+
+    // shows the cinema the same way it is stored in the file
+    void display() const override {
+        cout << name << "\n";
+        cout << address << "\n";
+        cout << LABEL_ROWS << rows << "\n";
+        cout << LABEL_SEATS << seatsPerRow << "\n";
+        cout << LABEL_CAPACITY << capacity << "\n";
+        cout << contact << "\n";
+        cout << LABEL_PRICE << price << "\n";
+        cout << LABEL_TYPE << type << "\n";
+        cout << LABEL_CODE << id << "\n";
+    }
+};
+
+// CLASS 4: CinemaSystem (runs the whole CINEMA block)
+
+class CinemaSystem {
+private:
+    // POINTERS: every slot points to a Cinema object created with new
+    CinemaData *cinemas[MAX_CINEMAS];
+    int count;
+
+    // ---------- numbering (a deleted number is never used again) ----------
+    int readCounter() const {
+        int last = 0;
+        ifstream in(CINEMA_COUNTER_FILE.c_str());
+        if (!(in >> last)) last = 0;
+        in.close();
+
+        // safety: never go lower than the biggest code in the list
+        for (int i = 0; i < count; i++) {
+            int number = CinemaHelper::idNumber(cinemas[i]->getId());
+            if (number > last) last = number;
+        }
+        return last;
+    }
+
+    void writeCounter(int number) const {
+        ofstream out(CINEMA_COUNTER_FILE.c_str());
+        out << number << "\n";
+        out.close();
+    }
+
+    // ---------- list file ----------
+    void loadAll() {
+        ifstream in(CINEMA_LIST_FILE.c_str());
+        string line;
+        while (count < MAX_CINEMAS && getline(in, line)) {
+            line = trim(line);
+            string id = CinemaHelper::slice(line, 0, RECORD_ID_LENGTH);
+            if (textLength(line) > RECORD_ID_LENGTH + 1 && CinemaHelper::isValidId(id)) {
+                string name = CinemaHelper::afterPrefix(line, RECORD_ID_LENGTH + 1);
+                CinemaData *loaded = new CinemaData(id, name, "", 0, 0, "", 0, "");   // POINTER
+                if (loaded->loadFromFile()) {
+                    cinemas[count] = loaded;
+                    count++;
+                } else {
+                    delete loaded;               // file missing, so skip it
+                }
+            }
+        }
+        in.close();
+    }
+
+    void saveList() const {
+        ofstream out(CINEMA_LIST_FILE.c_str());
+        for (int i = 0; i < count; i++)
+            out << cinemas[i]->getListLine() << "\n";
+        out.close();
+    }
+
+    void appendToList(const CinemaData *cinema) const {
+        ofstream out(CINEMA_LIST_FILE.c_str(), ios::app);
+        out << cinema->getListLine() << "\n";
+        out.close();
+    }
+
+    //  searching
+    int findIndexById(const string &id) const {
+        int found = -1;
+        for (int i = 0; i < count && found == -1; i++)
+            if (cinemas[i]->getId() == id) found = i;
+        return found;
+    }
+
+    // same name, ignoring upper and lower case
+    bool nameExists(const string &name) const {
+        bool exists = false;
+        string wanted = CinemaHelper::toLowerText(name);
+        for (int i = 0; i < count && !exists; i++)
+            if (CinemaHelper::toLowerText(cinemas[i]->getName()) == wanted) exists = true;
+        return exists;
+    }
+
+    // input with validation
+    string askRequired(const string &prompt) const {
+        string text = "";
+        cout << prompt;
+        getline(cin, text);
+        text = trim(text);
+        while (textLength(text) == 0) {
+            cout << " This field is required. Please try again.\n";
+            cout << prompt;
+            getline(cin, text);
+            text = trim(text);
+        }
+        return text;
+    }
+
+    string askOptional(const string &prompt) const {
+        string text = "";
+        cout << prompt;
+        getline(cin, text);
+        return trim(text);
+    }
+
+    string askContact() const {
+        string contact = "";
+        cout << " Contact number (+63 then 9 or 10 digits): ";
+        getline(cin, contact);
+        contact = trim(contact);
+        while (!CinemaHelper::isValidContact(contact)) {
+            cout << " Invalid format. Examples: +63285884000 or +639101234567\n";
+            cout << " Contact number (+63 then 9 or 10 digits): ";
+            getline(cin, contact);
+            contact = trim(contact);
+        }
+        return contact;
+    }
+
+    bool askYesNo(const string &prompt) const {
+        string answer = "";
+        cout << prompt << " (y/n): ";
+        getline(cin, answer);
+        answer = CinemaHelper::toLowerText(trim(answer));
+        while (answer != "y" && answer != "n") {
+            cout << " Please type y or n.\n";
+            cout << prompt << " (y/n): ";
+            getline(cin, answer);
+            answer = CinemaHelper::toLowerText(trim(answer));
+        }
+        return answer == "y";
+    }
+
+    // returns false if the manager typed 0 to cancel
+    bool askCinemaCode(string &code) const {
+        cout << " Cinema code (e.g. I-001) or 0 to cancel: ";
+        getline(cin, code);
+        code = CinemaHelper::toUpperText(trim(code));
+        while (code != "0" && !CinemaHelper::isValidId(code)) {
+            cout << " Invalid code. The format is I-XXX (e.g. I-001).\n";
+            cout << " Cinema code (e.g. I-001) or 0 to cancel: ";
+            getline(cin, code);
+            code = CinemaHelper::toUpperText(trim(code));
+        }
+        return code != "0";
+    }
+
+    // sorting helpers
+    // POINTER TO POINTER: swaps two Cinema pointers (the objects stay where they are)
+    static void swapCinemas(CinemaData **first, CinemaData **second) {
+        CinemaData *temp = *first;
+        *first = *second;
+        *second = temp;
+    }
+
+    // mode 2 = name, 3 = capacity, 4 = ticket price
+    static bool shouldSwap(const CinemaData *a, const CinemaData *b, int mode) {
+        if (mode == 2)
+            return CinemaHelper::toLowerText(a->getName()) > CinemaHelper::toLowerText(b->getName());
+        if (mode == 3) return a->getCapacity() > b->getCapacity();
+        if (mode == 4) return a->getPrice() > b->getPrice();
+        return false;
+    }
+
+    // TASK 1: ADD CINEMA
+    void addCinema() {
+        cout << "\n";
+        printTitle("ADD CINEMA");
+
+        if (count >= MAX_CINEMAS) {
+            cout << " The cinema list is full. A cinema must be deleted first.\n";
+            return;
+        }
+
+        string name = askRequired(" Cinema name: ");
+        if (nameExists(name)) {
+            cout << "\n This cinema is already registered. Cinema was not added.\n";
+            return;
+        }
+
+        // address: street, subdivision and barangay can be skipped
+        cout << " Address (press Enter to skip an optional part)\n";
+        string addressParts[4];
+        addressParts[0] = askOptional("   Street name (optional): ");
+        addressParts[1] = askOptional("   Subdivision/Building name (optional): ");
+        addressParts[2] = askOptional("   Barangay name (optional): ");
+        addressParts[3] = askRequired("   City/Municipality: ");
+
+        string address = "";
+        for (int i = 0; i < 4; i++) {
+            if (textLength(addressParts[i]) > 0) {
+                if (textLength(address) > 0) address += ", ";
+                address += addressParts[i];
+            }
+        }
+
+        cout << " Number of rows (1-" << MAX_ROWS << "): ";
+        int rows = getIntInRange(1, MAX_ROWS);
+        cout << " Number of seats per row (1-" << MAX_SEATS_PER_ROW << "): ";
+        int seatsPerRow = getIntInRange(1, MAX_SEATS_PER_ROW);
+        cout << " Capacity (rows x seats per row): " << rows * seatsPerRow << "\n";
+
+        string contact = askContact();
+
+        cout << " Ticket price (1-" << MAX_TICKET_PRICE << "): ";
+        int price = getIntInRange(1, MAX_TICKET_PRICE);
+
+        cout << " Cinema type:\n";
+        for (int i = 0; i < NUM_CINEMA_TYPES; i++)
+            cout << "   [" << i + 1 << "] " << CINEMA_TYPES[i] << "\n";
+        cout << " Choose a cinema type: ";
+        int typeChoice = getIntInRange(1, NUM_CINEMA_TYPES);
+
+        // create the code
+        int number = readCounter() + 1;
+        if (number > MAX_CINEMA_NUMBER) {
+            cout << "\n The cinema codes are used up (I-999 reached).\n";
+            return;
+        }
+        string id = CinemaHelper::makeId(number);
+
+        // POINTER: a new Cinema object is created on the heap
+        CinemaData *newCinema = new CinemaData(id, name, address, rows, seatsPerRow,
+                                       contact, price, CINEMA_TYPES[typeChoice - 1]);
+
+        if (!newCinema->saveToFile()) {
+            cout << "\n Error: the cinema file could not be created.\n";
+            delete newCinema;
+            return;
+        }
+
+        cinemas[count] = newCinema;
+        count++;
+        writeCounter(number);
+        appendToList(newCinema);
+
+        cout << "\n Cinema added successfully!\n";
+        cout << " Cinema Code # " << id << "\n";
+    }
+
+    // TASK 2A: SHOW ALL CINEMAS
+    void showAllCinemas() {
+        cout << "\n";
+        printTitle("SHOW ALL CINEMAS");
+
+        if (count == 0) {
+            cout << " There are no cinemas yet.\n";
+            return;
+        }
+
+        cout << " Display the cinemas:\n";
+        cout << "   [1] Cinema list format (by code)\n";
+        cout << "   [2] Alphabetical (by name)\n";
+        cout << "   [3] Increasing capacity\n";
+        cout << "   [4] Increasing ticket price\n";
+        cout << " Choice: ";
+        int mode = getIntInRange(1, 4);
+
+        // copy the pointers so the saved list keeps its order
+        CinemaData *sorted[MAX_CINEMAS];
+        for (int i = 0; i < count; i++)
+            sorted[i] = cinemas[i];
+
+        // bubble sort: only the pointers are swapped
+        for (int i = 0; i < count - 1; i++)
+            for (int j = 0; j < count - 1 - i; j++)
+                if (shouldSwap(sorted[j], sorted[j + 1], mode))
+                    swapCinemas(&sorted[j], &sorted[j + 1]);
+
+        cout << "\n";
+        for (int i = 0; i < count; i++) {
+            cout << sorted[i]->getListLine();
+            if (mode == 3) cout << "  (Capacity: " << sorted[i]->getCapacity() << ")";
+            if (mode == 4) cout << "  (Price: " << sorted[i]->getPrice() << ")";
+            cout << "\n";
+        }
+    }
+
+    // TASK 2B: SHOW CINEMA
+    void showCinema() {
+        cout << "\n";
+        printTitle("SHOW CINEMA");
+
+        if (count == 0) {
+            cout << " There are no cinemas yet.\n";
+            return;
+        }
+
+        string code = "";
+        if (!askCinemaCode(code)) return;
+
+        int index = findIndexById(code);
+        if (index == -1) {
+            cout << "\n Cinema " << code << " does not exist.\n";
+            return;
+        }
+
+        // POLYMORPHISM: a base-class pointer calls CinemaData's own display()
+        CinemaRecord *record = cinemas[index];
+        cout << "\n";
+        record->display();
+    }
+
+    // TASK 3: DELETE CINEMA
+    void deleteCinema() {
+        cout << "\n";
+        printTitle("DELETE CINEMA");
+
+        if (count == 0) {
+            cout << " There are no cinemas yet.\n";
+            return;
+        }
+
+        string code = "";
+        if (!askCinemaCode(code)) return;
+
+        int index = findIndexById(code);
+        if (index == -1) {
+            cout << "\n Cinema " << code << " does not exist. Nothing was deleted.\n";
+            return;
+        }
+
+        cout << "\n Cinema found: " << cinemas[index]->getListLine() << "\n";
+        if (!askYesNo(" Are you sure you want to delete this cinema?")) {
+            cout << " Deletion cancelled.\n";
+            return;
+        }
+
+        if (!cinemas[index]->deleteFile())
+            cout << " Warning: the cinema file could not be deleted.\n";
+
+        delete cinemas[index];                       // POINTER: free the object
+        for (int i = index; i < count - 1; i++)      // close the gap
+            cinemas[i] = cinemas[i + 1];
+        count--;
+        cinemas[count] = nullptr;
+
+        saveList();                                  // the counter file is not changed
+        cout << " Cinema " << code << " was deleted.\n";
+    }
+
+public:
+    // constructor: starts empty, then loads the saved cinemas
+    CinemaSystem() {
+        count = 0;
+        for (int i = 0; i < MAX_CINEMAS; i++)
+            cinemas[i] = nullptr;
+        loadAll();
+    }
+
+    // destructor: frees every Cinema object
+    ~CinemaSystem() {
+        for (int i = 0; i < count; i++)
+            delete cinemas[i];
+    }
+
+    // the menu of the CINEMA block (manager only)
+    void runManager() {
+        int choice = 0;
+        do {
+            printTitle("CINEMA BLOCK");
+            cout << "   [1] Add Cinema\n";
+            cout << "   [2] Show All Cinemas\n";
+            cout << "   [3] Show Cinema\n";
+            cout << "   [4] Delete Cinema\n";
+            cout << "   [5] Back to Manager Menu\n";
+            drawLine('-', LINE_WIDTH);
+            cout << " Choice: ";
+            choice = getIntInRange(1, 5);
+
+            switch (choice) {
+                case 1: addCinema();      break;
+                case 2: showAllCinemas(); break;
+                case 3: showCinema();     break;
+                case 4: deleteCinema();   break;
+                default: break;
+            }
+        } while (choice != 5);
+    }
+
+    //  for the BOOKING block
+    int getCinemaCount() const { return count; }
+
+    const CinemaData *getCinema(int index) const {
+        if (index >= 0 && index < count) return cinemas[index];
+        return nullptr;
+    }
+
+    const CinemaData *findCinemaById(const string &id) const {
+        int index = findIndexById(id);
+        if (index == -1) return nullptr;
+        return cinemas[index];
+    }
+
+    const CinemaData *findCinemaByName(const string &name) const {
+        string wanted = CinemaHelper::toLowerText(name);
+        for (int i = 0; i < count; i++)
+            if (CinemaHelper::toLowerText(cinemas[i]->getName()) == wanted) return cinemas[i];
+        return nullptr;
+    }
+};
+
 #endif

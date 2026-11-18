@@ -1,7 +1,10 @@
 #include "group6_header.h" 
 
 int main() {
-    BookingSystem booking;                  // the BOOKING block
+    BookingSystem booking;
+    CinemaSystem cinema;
+    MovieSystem movie;
+                      
     int wrongCodes = 0;                 // wrong manager codes entered so far
     bool isManager = false;
     bool userChosen = false;
@@ -61,12 +64,10 @@ int main() {
                     cout << "\n The CUSTOMER block is not connected yet.\n";
                     break;
                 case 2:
-                    // INTEGRATION POINT: call the MOVIE block here
-                    cout << "\n The MOVIE block is not connected yet.\n";
+                    movie.runManager();
                     break;
                 case 3:
-                    // INTEGRATION POINT: call the CINEMA block here
-                    cout << "\n The CINEMA block is not connected yet.\n";
+                    cinema.runManager();
                     break;
                 case 4:
                     booking.runManager();
