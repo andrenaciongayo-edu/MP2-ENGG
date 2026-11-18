@@ -39,6 +39,9 @@ const string EMAIL_DOMAINS[NUM_EMAIL_DOMAINS] = {"gmail.com", "yahoo.com", "outl
                                                  "hotmail.com", "icloud.com"};
 const int MOVIE_MOBILE_LENGTH = 13;         // +639 followed by 9 digits
 
+// ---------- CUSTOMER block constants ----------
+const int CUSTOMER_MIN_AGE = 18;            // only adults can register
+
 // =====================================================================================
 // Helper Functions & Tokenizer (same as MP1, except where marked NEW)
 // =====================================================================================
@@ -1382,7 +1385,6 @@ public:
         selectedMovie = 0;                  // POINTER: 0 means "points to nothing"
         selectedCinema = 0;
     }
-
     // Entry points used by the main menu in main.cpp
     // Booking block for a CUSTOMER: GET BOOKING, then CHECK AVAILABILITY
     void runCustomer() {
@@ -1395,8 +1397,420 @@ public:
     }
 };
 
-class CustomerSystem{
+// =====================================================================================
+// CLASS: CustomerSystem - menus and workflows of the CUSTOMER block
+// Writes C-XXX.txt and Customer List.txt (read by the BOOKING block through the
+// Customer and CustomerList classes above, so the file formats must stay the same).
+// =====================================================================================
+class CustomerSystem {
+private:
+    CustomerList customerList;              // Customer List.txt in memory
 
+    // ---------- Validations of the incoming inputs ----------
+
+    bool isLetterChar(char c) {
+        return (c >= 'A' && c <= 'Z') || (c >= 'a' && c <= 'z');
+    }
+
+    // Letters, spaces, '-', '\'' and '.' only (digits too if allowDigits). No commas, because the
+    // files use ", " to separate the parts of a name and address.
+    bool isValidText(const string &text, bool allowDigits) {
+        int len = textLength(text);
+        bool hasLetterOrDigit = false;
+        for (int i = 0; i < len; i++) {
+            char c = text[i];
+            if (isLetterChar(c) || (allowDigits && isDigitChar(c))) {
+                hasLetterOrDigit = true;
+            } else if (c != ' ' && c != '-' && c != '\'' && c != '.') {
+                return false;
+            }
+        }
+        return hasLetterOrDigit;
+    }
+
+    // MM/DD/YYYY with a real month, a real day, and a four-digit year
+    bool isValidDate(string date) {
+        if (textLength(date) != 10) return false;
+        if (date[2] != '/' || date[5] != '/') return false;
+        for (int i = 0; i < 10; i++) {
+            if (i != 2 && i != 5 && !isDigitChar(date[i])) return false;
+        }
+
+        int month = toInt(cutText(date, 0, 2));
+        int day = toInt(cutText(date, 3, 5));
+        int year = toInt(cutText(date, 6, 10));
+        if (month < 1 || month > 12 || year < 1) return false;
+
+        int daysInMonth = 31;
+        if (month == 4 || month == 6 || month == 9 || month == 11) {
+            daysInMonth = 30;
+        } else if (month == 2) {
+            bool leapYear = (year % 4 == 0 && year % 100 != 0) || (year % 400 == 0);
+            daysInMonth = leapYear ? 29 : 28;
+        }
+        return (day >= 1 && day <= daysInMonth);
+    }
+
+    // Turns MM/DD/YYYY into the number YYYYMMDD so that two dates can be compared
+    int convertDate(string date) {
+        int month = toInt(cutText(date, 0, 2));
+        int day = toInt(cutText(date, 3, 5));
+        int year = toInt(cutText(date, 6, 10));
+        return year * 10000 + month * 100 + day;
+    }
+
+    // Today as YYYYMMDD
+    int todayNumber() {
+        time_t currentTime = time(0);
+        tm *today = localtime(&currentTime);        // POINTER: points to the current date and time
+        if (today == 0) return 0;
+        return (today->tm_year + 1900) * 10000 + (today->tm_mon + 1) * 100 + today->tm_mday;
+    }
+
+    // True if the person born on 'birthday' is at least 18 years old today
+    bool isAdult(string birthday) {
+        return (todayNumber() - convertDate(birthday)) >= CUSTOMER_MIN_AGE * 10000;
+    }
+
+    // +639 followed by 9 digits
+    bool isValidMobile(string mobile) {
+        if (textLength(mobile) != MOVIE_MOBILE_LENGTH) return false;
+        if (mobile[0] != '+' || mobile[1] != '6' || mobile[2] != '3' || mobile[3] != '9') return false;
+        for (int i = 4; i < MOVIE_MOBILE_LENGTH; i++) {
+            if (!isDigitChar(mobile[i])) return false;
+        }
+        return true;
+    }
+
+    // One '@' with something before it, and a domain that is one of EMAIL_DOMAINS
+    bool isValidEmail(string email) {
+        int len = textLength(email);
+        int atPos = -1;
+        for (int i = 0; i < len; i++) {
+            if (isBlankChar(email[i])) return false;
+            if (email[i] == '@') {
+                if (atPos != -1) return false;      // only one '@' allowed
+                atPos = i;
+            }
+        }
+        if (atPos < 1) return false;                // missing '@' or nothing before it
+
+        string domain = cutText(email, atPos + 1, len);
+        return (findChoice(EMAIL_DOMAINS, NUM_EMAIL_DOMAINS, domain) != -1);
+    }
+
+    // ---------- Input helpers (all re-ask until the value is valid) ----------
+
+    // A required text value (name, house number, barangay, ...)
+    string askText(const string &prompt, bool allowDigits) {
+        string text;
+        bool valid = false;
+        do {
+            text = getNonEmptyLine(prompt);
+            valid = isValidText(text, allowDigits);
+            if (!valid) cout << "  ! Invalid entry. Use letters" << (allowDigits ? ", numbers" : "")
+                             << ", spaces, - ' and . only (no commas).\n";
+        } while (!valid);
+        return text;
+    }
+
+    // An optional text value: pressing Enter skips it (returns "")
+    string askOptionalText(const string &prompt) {
+        string text;
+        bool valid = false;
+        do {
+            cout << prompt;
+            getline(cin, text);
+            text = trim(text);
+            valid = (text == "") || isValidText(text, true);
+            if (!valid) cout << "  ! Invalid entry. Use letters, numbers, spaces, - ' and . only (no commas).\n";
+        } while (!valid);
+        return text;
+    }
+
+    // Middle initial is optional: returns "" or a letter followed by a period (e.g. "A.")
+    string askMiddleInitial() {
+        string text;
+        bool valid = false;
+        do {
+            cout << " Middle initial (Enter to skip) : ";
+            getline(cin, text);
+            text = trim(text);
+            if (textLength(text) == 2 && text[1] == '.') text = cutText(text, 0, 1);
+            valid = (text == "") || (textLength(text) == 1 && isLetterChar(text[0]));
+            if (!valid) cout << "  ! Enter one letter only (e.g. A).\n";
+        } while (!valid);
+        if (text == "") return "";
+        return toUpper(text) + ".";
+    }
+
+    // ---------- Customer IDs and duplicates ----------
+
+    // Highest customer number found in Customer List.txt (the list must be loaded first)
+    int highestNumberInList() {
+        int highest = 0;
+        for (int i = 0; i < customerList.getCount(); i++) {
+            int number = toInt(cutText(customerList.getID(i), 2, RECORD_ID_LENGTH));
+            if (number > highest) highest = number;
+        }
+        return highest;
+    }
+
+    // Position in the list of a customer with the same name AND birthday, or the same email.
+    // Returns -1 if this customer is not registered yet.
+    int findDuplicate(const string &fullName, const string &birthday, const string &email) {
+        customerList.load();
+        for (int i = 0; i < customerList.getCount(); i++) {
+            string lines[MAX_FILE_LINES];
+            int count = readFileLines(customerList.getID(i) + ".txt", lines, MAX_FILE_LINES);
+            if (count < 5) continue;                // no readable file: nothing to compare
+
+            bool samePerson = (toUpper(lines[0]) == toUpper(fullName) && lines[3] == birthday);
+            bool sameEmail = (toUpper(lines[4]) == toUpper(email));
+            if (samePerson || sameEmail) return i;
+        }
+        return -1;
+    }
+
+    // Asks for a customer ID until one in Customer List.txt is given. Returns false if 0 (cancel) was typed.
+    // 'customerID' and 'listIndex' are passed by reference and filled with the customer that was found.
+    bool askExistingCustomer(string prompt, string &customerID, int &listIndex) {
+        bool found = false;
+        bool cancelled = false;
+        do {
+            string idInput = getNonEmptyLine(prompt);
+            if (idInput == "0") {
+                cancelled = true;
+            } else if (!isValidRecordID('C', idInput)) {
+                cout << "  ! Invalid Customer ID. Use C-XXX.\n";
+            } else {
+                idInput = toUpper(trim(idInput));
+                customerList.load();
+                listIndex = customerList.findIndex(idInput);
+                if (listIndex == -1) {
+                    cout << "  ! Customer " << idInput << " does not exist.\n";
+                } else {
+                    customerID = idInput;
+                    found = true;
+                }
+            }
+        } while (!found && !cancelled);
+        return found;
+    }
+
+    // ---------- Tasks ----------
+
+    // ADD CUSTOMER: asks for every detail, validates it, then assigns the customer ID
+    void addCustomer() {
+        printTitle("ADD CUSTOMER");
+
+        // ----- name -----
+        cout << " NAME\n";
+        string lastName = askText("   Last name : ", false);
+        string givenName = askText("   Given name : ", false);
+        string middleInitial = askMiddleInitial();
+
+        string fullName = lastName + ", " + givenName;
+        if (middleInitial != "") fullName += " " + middleInitial;
+
+        // ----- address -----
+        cout << "\n ADDRESS (Enter to skip the optional parts)\n";
+        string houseNo = askText("   House # : ", true);
+        string street = askOptionalText("   Street name (optional) : ");
+        string subdivision = askOptionalText("   Subdivision/Building name (optional) : ");
+        string barangay = askText("   Barangay name : ", true);
+        if (toUpper(cutText(barangay, 0, 4)) == "BGY.") {      // the file adds "Bgy." itself
+            barangay = trim(cutText(barangay, 4, textLength(barangay)));
+        }
+        string city = askText("   City/Municipality : ", false);
+
+        string address = houseNo;
+        if (street != "") address += " " + street;
+        if (subdivision != "") address += ", " + subdivision;
+        address += ", Bgy. " + barangay + ", " + city;
+
+        // ----- mobile number -----
+        cout << "\n";
+        string mobile;
+        bool validMobile = false;
+        do {
+            mobile = getNonEmptyLine(" Mobile number (+639XXXXXXXXX) : ");
+            validMobile = isValidMobile(mobile);
+            if (!validMobile) cout << "  ! Invalid mobile number. Use +639 followed by 9 digits.\n";
+        } while (!validMobile);
+
+        // ----- birthday (adults only) -----
+        string birthday;
+        bool validBirthday = false;
+        do {
+            birthday = getNonEmptyLine(" Birthday (MM/DD/YYYY) : ");
+            if (!isValidDate(birthday)) {
+                cout << "  ! Invalid date. Use MM/DD/YYYY.\n";
+            } else if (convertDate(birthday) > todayNumber()) {
+                cout << "  ! The birthday cannot be in the future.\n";
+            } else if (!isAdult(birthday)) {
+                cout << "  ! Only adults (" << CUSTOMER_MIN_AGE << " years old and above) can register.\n";
+                cout << "  Registration cancelled.\n";
+                return;
+            } else {
+                validBirthday = true;
+            }
+        } while (!validBirthday);
+
+        // ----- email -----
+        string email;
+        bool validMail = false;
+        do {
+            email = getNonEmptyLine(" Email address : ");
+            validMail = isValidEmail(email);
+            if (!validMail) {
+                cout << "  ! Invalid email. Accepted: ";
+                for (int i = 0; i < NUM_EMAIL_DOMAINS; i++) {
+                    if (i > 0) cout << ", ";
+                    cout << "@" << EMAIL_DOMAINS[i];
+                }
+                cout << "\n";
+            }
+        } while (!validMail);
+
+        // The same customer cannot be registered twice
+        int duplicateIndex = findDuplicate(fullName, birthday, email);
+        if (duplicateIndex != -1) {
+            cout << "\n  ! This customer is already registered as " << customerList.getID(duplicateIndex) << ".\n";
+            cout << "  Customer was not added.\n";
+            return;
+        }
+
+        // The customer ID is assigned only after all the information was submitted.
+        // Numbers of deleted customers are never used again: the counter keeps the highest number ever used.
+        customerList.load();
+        int lastNumber = customerList.readCounter();
+        if (highestNumberInList() > lastNumber) lastNumber = highestNumberInList();
+        int newNumber = lastNumber + 1;
+        if (newNumber > MAX_BOOKING_NUMBER) {
+            cout << "\n Sorry, the customer limit was reached.\n";
+            return;
+        }
+        string customerID = makeID('C', newNumber);
+
+        // C-XXX.txt (same layout as the handout; Customer::loadFromFile() reads it back)
+        ofstream out(customerID + ".txt");
+        if (!out.is_open()) {
+            cout << "  ! Unable to create the customer file.\n";
+            return;
+        }
+        out << fullName << "\n";
+        out << address << "\n";
+        out << mobile << "\n";
+        out << birthday << "\n";
+        out << email << "\n";
+        out << "Customer ID # " << customerID << "\n";
+        out.close();
+
+        customerList.add(customerID, fullName);
+        customerList.writeCounter(newNumber);
+
+        cout << "\n Customer successfully added!\n";
+        cout << " Customer ID: " << customerID << "\n";
+    }
+
+    // SHOW ALL CUSTOMERS: the list of customer IDs and names
+    void showAllCustomers() {
+        printTitle("ALL CUSTOMERS");
+        int count = customerList.load();
+        if (count == 0) {
+            cout << " No Customers Found.\n";
+        } else {
+            customerList.display();
+        }
+        drawLine('-', LINE_WIDTH);
+    }
+
+    // SHOW CUSTOMER: the contents of one customer file
+    void showCustomer() {
+        printTitle("SHOW CUSTOMER");
+        string customerID;
+        int listIndex = -1;
+        if (!askExistingCustomer(" Customer ID (C-XXX, or 0 to cancel) : ", customerID, listIndex)) {
+            return;
+        }
+
+        string lines[MAX_FILE_LINES];
+        int count = readFileLines(customerID + ".txt", lines, MAX_FILE_LINES);
+        if (count < 1) {
+            cout << "Unable to open file\n";
+            return;
+        }
+        cout << "\n";
+        drawLine('-', LINE_WIDTH);
+        for (int i = 0; i < count; i++) {
+            cout << lines[i] << "\n";
+        }
+        drawLine('-', LINE_WIDTH);
+    }
+
+    // DELETE CUSTOMER: the customer must exist first; then the file is deleted and the list is updated
+    void deleteCustomer() {
+        printTitle("DELETE CUSTOMER");
+        string customerID;
+        int listIndex = -1;
+        if (!askExistingCustomer(" Customer ID to delete (C-XXX, or 0 to cancel) : ", customerID, listIndex)) {
+            return;
+        }
+        cout << "  [OK] Customer " << customerID << " exists. Proceeding with deletion...\n";
+
+        // Keep the counter at or above this number so the customer number cannot be used again
+        int deletedNumber = toInt(cutText(customerID, 2, RECORD_ID_LENGTH));
+        if (deletedNumber > customerList.readCounter()) {
+            customerList.writeCounter(deletedNumber);
+        }
+
+        string fileName = customerID + ".txt";
+        remove(fileName.c_str());           // the file may already be missing: the list is still fixed
+
+        if (!customerList.removeAt(listIndex)) {
+            cout << "  ! Unable to update Customer List.txt.\n";
+            return;
+        }
+        cout << "\n Customer " << customerID << " deleted successfully.\n";
+    }
+
+    // Manager menu loop (runs until the manager chooses Back)
+    void managerFlow() {
+        int choice = 0;
+        do {
+            printTitle("CUSTOMER MENU");
+            cout << "   [1] Add customer\n";
+            cout << "   [2] Show all customers\n";
+            cout << "   [3] Show customer\n";
+            cout << "   [4] Delete customer\n";
+            cout << "   [5] Back\n";
+            drawLine('-', LINE_WIDTH);
+            cout << " Choice: ";
+            choice = getIntInRange(1, 5);
+
+            switch (choice) {
+                case 1: addCustomer(); break;
+                case 2: showAllCustomers(); break;
+                case 3: showCustomer(); break;
+                case 4: deleteCustomer(); break;
+                default: cout << "\n Exiting Customer Block.\n"; break;
+            }
+        } while (choice != 5);
+    }
+
+public:
+    CustomerSystem() {
+    }
+
+    void runCustomer() {
+        addCustomer();
+    }
+
+    // Customer block for the MANAGER: add, show all, show, delete
+    void runManager() {
+        managerFlow();
+    }
 };
 
 
@@ -1712,7 +2126,11 @@ public:
         } while (choice != 5);
     }
 };
-
+// =====================================================================================
+// CINEMA block (integrated from cinemaa.cpp)
+// NOTE: its Cinema class is renamed CinemaData because the BOOKING block already
+// has a Cinema class (a read-only view of I-XXX.txt) in this header.
+// =====================================================================================
 //Cinema constants
 const int MAX_CINEMA_NUMBER = 999;       // codes go from I-001 to I-999
 const int MAX_TICKET_PRICE  = 100000;
@@ -2118,6 +2536,8 @@ private:
         if (mode == 4) return a->getPrice() > b->getPrice();
         return false;
     }
+
+    //  the three tasks
 
     // TASK 1: ADD CINEMA
     void addCinema() {

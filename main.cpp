@@ -3,6 +3,7 @@
 int main() {
     BookingSystem booking;
     CinemaSystem cinema;
+    CustomerSystem customer;
     MovieSystem movie;
                       
     int wrongCodes = 0;                 // wrong manager codes entered so far
@@ -60,8 +61,7 @@ int main() {
 
             switch (managerChoice) {
                 case 1:
-                    // INTEGRATION POINT: call the manager side of the CUSTOMER block here
-                    cout << "\n The CUSTOMER block is not connected yet.\n";
+                    customer.runManager();
                     break;
                 case 2:
                     movie.runManager();
@@ -92,8 +92,7 @@ int main() {
 
             switch (customerChoice) {
                 case 1:
-                    // INTEGRATION POINT: call the customer side of the CUSTOMER block here (ADD CUSTOMER)
-                    cout << "\n The CUSTOMER block is not connected yet.\n";
+                    customer.runCustomer();
                     break;
                 case 2:
                     booking.runCustomer();
