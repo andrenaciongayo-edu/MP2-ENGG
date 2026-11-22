@@ -58,6 +58,11 @@ int main()
                 }
             } while (!userChosen);
         }
+        else if(roleChoice == 3)
+        {
+            cout << "\n Thank you. Goodbye!\n";
+            return 0;
+        }
         // ---------- Manager menu ----------
         if (isManager)
         {
@@ -123,8 +128,6 @@ int main()
             } while (customerChoice != 3);
         }
     } while (roleChoice != 3);
-
-    cout << "\n Thank you. Goodbye!\n";
-
+    
     return 0;
 }

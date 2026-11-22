@@ -824,7 +824,7 @@ public:
     string getName() { return name; }
     int getRows() { return rows; }
     int getSeatsPerRow() { return seatsPerRow; }
-    int getCapacity() { return rows * seatsPerRow; }        // computed, never typed in
+    int getCapacity() { return rows * seatsPerRow; }        
     int getPrice() { return price; }
 
     void setDetails(string cinemaName, string cinemaAddress, int numRows, int numSeats,
@@ -1056,9 +1056,7 @@ public:
 };
 
 // =====================================================================================
-// CLASS: RecordList  (PARENT class) - a list file such as "Booking List.txt"
-// Each line is "ID text". The two arrays are created with new and freed by the destructor.
-// (A RecordList is never copied, so the pointers are never shared.)
+// CLASS: RecordList  (PARENT class)
 // =====================================================================================
 class RecordList {
 protected:
@@ -1547,7 +1545,7 @@ public:
         selectedCinema = 0;
     }
 
-    // DESTRUCTOR: ... and given back here (the lists free their own arrays)
+    // DESTRUCTOR
     ~BookingSystem() {
         delete[] movies;
         delete[] cinemas;
@@ -1602,7 +1600,7 @@ private:
         string street = askOptionalText("   Street name (optional) : ");
         string subdivision = askOptionalText("   Subdivision/Building name (optional) : ");
         string barangay = askText("   Barangay name : ", true);
-        if (toUpper(cutText(barangay, 0, 4)) == "BGY.") {      // the file adds "Bgy." itself
+        if (toUpper(cutText(barangay, 0, 4)) == "BRGY.") {      // the file adds "Brgy." itself
             barangay = trim(cutText(barangay, 4, textLength(barangay)));
         }
         string city = askText("   City/Municipality : ", false);
@@ -1610,7 +1608,7 @@ private:
         string address = houseNo;
         if (street != "") address += " " + street;
         if (subdivision != "") address += ", " + subdivision;
-        address += ", Bgy. " + barangay + ", " + city;
+        address += ", Brgy. " + barangay + ", " + city;
 
         cout << "\n";
         string mobile = askMobile();
