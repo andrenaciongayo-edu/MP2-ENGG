@@ -1916,7 +1916,7 @@ private:
         string parts[4];
         parts[0] = askOptionalText("   Street name (optional) : ");
         parts[1] = askOptionalText("   Subdivision/Building name (optional) : ");
-        parts[2] = askOptionalText("   Barangay name (optional) : ");
+        parts[2] = askText("   Barangay name : ", false);
         parts[3] = askText("   City/Municipality : ", false);
         string address = "";
         for (int i = 0; i < 4; i++) {
