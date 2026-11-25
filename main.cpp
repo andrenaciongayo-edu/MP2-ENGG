@@ -24,6 +24,8 @@ int main()
         drawLine('-', LINE_WIDTH);
         cout << "\n Choice: ";
         roleChoice = getIntInRange(1, 3);
+        isManager = false;                  // a new visit never keeps the old manager access
+        userChosen = false;
 
         if (roleChoice == 1)
         {
@@ -38,7 +40,7 @@ int main()
                 printTitle("MANAGER LOGIN");
                 cout << " Manager code : ";
                 string code;
-                getline(cin, code);
+                readInputLine(code);
 
                 if (trim(code) == MANAGER_CODE)
                 {

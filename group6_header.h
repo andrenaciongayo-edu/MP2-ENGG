@@ -4,6 +4,8 @@
 #include <iostream>
 #include <fstream>
 #include <cstdio>
+#include <cstdlib>
+#include <string>
 #include <ctime>              // today's date (birthday and movie date checks)
 
 using namespace std;
@@ -305,6 +307,16 @@ int convertDate(const string &date) {
            toInt(cutText(date, 3, 5));
 }
 
+// "12/01/2027" -> "December 1, 2027" (format used inside the movie file)
+string longDate(const string &date) {
+    const string months[12] = {"January", "February", "March", "April", "May", "June", "July",
+                               "August", "September", "October", "November", "December"};
+    int month = toInt(cutText(date, 0, 2));
+    int day = toInt(cutText(date, 3, 5));
+    if (month < 1 || month > 12) return date;
+    return months[month - 1] + " " + intToString(day) + ", " + cutText(date, 6, 10);
+}
+
 // Today as YYYYMMDD
 int todayNumber() {
     time_t currentTime = time(0);
@@ -370,11 +382,20 @@ void printTitle(const string &title) {
 
 // ---------- Input helpers (all of them re-ask until the value is valid) ----------
 
+// Reads one line from the keyboard. If the input is closed (Ctrl+D / Ctrl+Z or end of a piped
+// file) the program ends cleanly instead of re-asking forever.
+void readInputLine(string &text) {
+    if (!getline(cin, text)) {
+        cout << "\n Input closed. Goodbye!\n";
+        exit(0);
+    }
+}
+
 string getNonEmptyLine(const string &prompt) {
     string text;
     do {
         cout << prompt;
-        getline(cin, text);
+        readInputLine(text);
         text = trim(text);
         if (text == "") {
             cout << "  ! This field cannot be blank.\n";
@@ -389,7 +410,7 @@ int getIntInRange(int low, int high) {
     bool valid;
     int value = 0;
     do {
-        getline(cin, text);
+        readInputLine(text);
         text = trim(text);
         valid = (text != "");
         for (int i = 0; i < textLength(text) && valid; i++) {
@@ -423,7 +444,7 @@ string askOptionalText(const string &prompt) {
     bool valid = false;
     do {
         cout << prompt;
-        getline(cin, text);
+        readInputLine(text);
         text = trim(text);
         valid = (text == "") || isValidText(text, true);
         if (!valid) cout << "  ! Invalid entry. Use letters, numbers, spaces, - ' and . only (no commas).\n";
@@ -437,7 +458,7 @@ string askMiddleInitial() {
     bool valid = false;
     do {
         cout << " Middle initial (Enter to skip) : ";
-        getline(cin, text);
+        readInputLine(text);
         text = trim(text);
         if (textLength(text) == 2 && text[1] == '.') text = cutText(text, 0, 1);
         valid = (text == "") || (textLength(text) == 1 && isLetterChar(text[0]));
@@ -557,7 +578,7 @@ int readSeatList(int minSeats, string seats[MAX_SEATS_PER_BOOKING]) {
     int count = 0;
     do {
         string line;
-        getline(cin, line);
+        readInputLine(line);
         line = toUpper(trim(line));
 
         bool overflow = false;
@@ -596,6 +617,9 @@ public:
         id = recordID;
     }
 
+    // VIRTUAL destructor: deleting a child through a Record* frees the child properly
+    virtual ~Record() {}
+
     string getID() { return id; }
     string getFileName() { return id + ".txt"; }
 
@@ -603,11 +627,16 @@ public:
         return remove(getFileName().c_str()) == 0;
     }
 
-    void display() {                        // parent version: only the ID
+    // VIRTUAL: every child overrides these, so a Record* runs the child's own version
+    virtual void display() {                // parent version: only the ID
         cout << id << "\n";
     }
 
-    bool loadFromFile() {                   // parent version: nothing to load
+    virtual void displayDetails() {         // parent version: only the ID
+        cout << id << "\n";
+    }
+
+    virtual bool loadFromFile() {           // parent version: nothing to load
         return false;
     }
 };
@@ -659,13 +688,13 @@ public:
     }
 
     // Same name as Record::display(), different implementation
-    void display() {
+    void display() override {
         cout << getName() << "\n";
         cout << "     Mobile : " << mobile << "\n";
         cout << "     Email  : " << email << "\n";
     }
 
-    void displayDetails() {
+    void displayDetails() override {
         writeTo(cout);
     }
 
@@ -680,7 +709,7 @@ public:
     /* C-XXX.txt (one value per line):
      *  0 Last, Given Name MI      1 address       2 mobile number
      *  3 birthday                 4 email         5 Customer ID # C-XXX */
-    bool loadFromFile() {
+    bool loadFromFile() override {
         string lines[MAX_FILE_LINES];
         if (readFileLines(getFileName(), lines, MAX_FILE_LINES) < 5) return false;
 
@@ -709,12 +738,12 @@ private:
 
     void writeTo(ostream &out) {
         out << name << "\n" << genre << "\n";
-        out << "Start date: " << startDate << "\n";
-        out << "End date: " << endDate << "\n";
+        out << "Start date: " << longDate(startDate) << "\n";
+        out << "End date: " << longDate(endDate) << "\n";
         out << "Rating: " << rating << "\n";
         out << contactPerson << "\n";
-        out << "Mobile Number: " << mobile << "\n";
-        out << "Email Address: " << email << "\n";
+        out << mobile << "\n";
+        out << email << "\n";
         out << "Movie ID # " << id << "\n";
     }
 
@@ -741,7 +770,7 @@ public:
     }
 
     // Same name as Record::display()
-    void display() {
+    void display() override {
         cout << name << "\n";
         cout << "     Genre  : " << genre << "   Rating: " << rating << "\n";
         if (startDate != "" && endDate != "") {
@@ -749,7 +778,7 @@ public:
         }
     }
 
-    void displayDetails() {
+    void displayDetails() override {
         writeTo(cout);
     }
 
@@ -765,7 +794,7 @@ public:
      *  0 name       1 genre       2 Start date: ...     3 End date: ...     4 Rating: ...
      *  5 contact person           6 Mobile Number: ...  7 Email Address: ...
      *  8 Movie ID # M-XXX */
-    bool loadFromFile() {
+    bool loadFromFile() override {
         string lines[MAX_FILE_LINES];
         int count = readFileLines(getFileName(), lines, MAX_FILE_LINES);
         if (count < 1) return false;
@@ -845,13 +874,13 @@ public:
     }
 
     // Same name as Record::display(), different implementation
-    void display() {
+    void display() override {
         cout << name << "\n";
         cout << "     Type   : " << type << "   Capacity: " << getCapacity() << "\n";
         cout << "     Price  : PHP " << formatMoney(price) << " per seat\n";
     }
 
-    void displayDetails() {
+    void displayDetails() override {
         writeTo(cout);
     }
 
@@ -867,7 +896,7 @@ public:
      *  0 name              1 address            2 Number of rows: N
      *  3 Number of seats per row: N             4 Capacity: N
      *  5 contact number    6 Price: N           7 Cinema type: X      8 Cinema Code # I-XXX */
-    bool loadFromFile() {
+    bool loadFromFile() override {
         string lines[MAX_FILE_LINES];
         if (readFileLines(getFileName(), lines, MAX_FILE_LINES) < 8) return false;
 
@@ -918,7 +947,12 @@ public:
     void setTotalText(string total) { totalText = total; }
 
     // Same name as Record::display(), different implementation
-    void display() {
+    void displayDetails() override {
+        display();
+    }
+
+    // Same name as Record::display(), different implementation
+    void display() override {
         cout << " Customer name: " << customer.getName() << "\n";
         cout << " " << customer.getMobile() << "\n";
         cout << " " << customer.getEmail() << "\n";
@@ -946,7 +980,7 @@ public:
         return true;
     }
 
-    bool loadFromFile() {
+    bool loadFromFile() override {
         string lines[MAX_FILE_LINES];
         int count = readFileLines(getFileName(), lines, MAX_FILE_LINES);
         if (count < 8) return false;
@@ -1067,6 +1101,9 @@ protected:
     int count;
 
 public:
+    RecordList(const RecordList &) = delete;             // owns raw memory: copying is not allowed
+    RecordList &operator=(const RecordList &) = delete;
+
     RecordList() {
         ids = new string[MAX_RECORDS];
         texts = new string[MAX_RECORDS];
@@ -1074,7 +1111,7 @@ public:
     }
 
     // DESTRUCTOR: gives the memory back
-    ~RecordList() {
+    virtual ~RecordList() {
         delete[] ids;
         delete[] texts;
     }
@@ -1207,7 +1244,7 @@ public:
     }
 
     // Parent version: prints every line as "ID text"
-    void display() {
+    virtual void display() {
         for (int i = 0; i < count; i++) {
             cout << " " << ids[i] << "  " << texts[i] << "\n";
         }
@@ -1258,7 +1295,7 @@ public:
     }
 
     // Same name as RecordList::display(), different implementation
-    void display() {
+    void display() override {
         cout << " Booking ID    Total\n";
         drawLine('-', LINE_WIDTH);
         for (int i = 0; i < count; i++) {
@@ -1295,9 +1332,10 @@ private:
         movieList.load();
         for (int i = 0; i < movieList.getCount() && movieCount < MAX_MOVIES; i++) {
             Movie movie(toUpper(movieList.getID(i)), movieList.getText(i));
-            movie.loadFromFile();           // fills the details if the file exists
-            movies[movieCount] = movie;
-            movieCount++;
+            if (movie.loadFromFile()) {     // movies whose file is missing are skipped
+                movies[movieCount] = movie;
+                movieCount++;
+            }
         }
 
         cinemaList.load();
@@ -1608,7 +1646,7 @@ private:
         string address = houseNo;
         if (street != "") address += " " + street;
         if (subdivision != "") address += ", " + subdivision;
-        address += ", Brgy. " + barangay + ", " + city;
+        address += ", Bgy. " + barangay + ", " + city;
 
         cout << "\n";
         string mobile = askMobile();
@@ -1676,7 +1714,8 @@ private:
         }
         cout << "\n";
         drawLine('-', LINE_WIDTH);
-        customer.displayDetails();
+        Record *record = &customer;         // POINTER: Customer seen as its parent Record
+        record->displayDetails();           // runs Customer::displayDetails()
         drawLine('-', LINE_WIDTH);
     }
 
@@ -1802,7 +1841,8 @@ private:
         }
         cout << "\n";
         drawLine('-', LINE_WIDTH);
-        movie.displayDetails();
+        Record *record = &movie;            // POINTER: Movie seen as its parent Record
+        record->displayDetails();           // runs Movie::displayDetails()
         drawLine('-', LINE_WIDTH);
     }
 
@@ -1980,7 +2020,8 @@ private:
         }
         cout << "\n";
         drawLine('-', LINE_WIDTH);
-        cinema.displayDetails();
+        Record *record = &cinema;           // POINTER: Cinema seen as its parent Record
+        record->displayDetails();           // runs Cinema::displayDetails()
         drawLine('-', LINE_WIDTH);
     }
 
