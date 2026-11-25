@@ -4,8 +4,6 @@
 #include <iostream>
 #include <fstream>
 #include <cstdio>
-#include <cstdlib>
-#include <string>
 #include <ctime>              // today's date (birthday and movie date checks)
 
 using namespace std;
@@ -384,6 +382,18 @@ void printTitle(const string &title) {
 
 // Reads one line from the keyboard. If the input is closed (Ctrl+D / Ctrl+Z or end of a piped
 // file) the program ends cleanly instead of re-asking forever.
+// Thrown when the user types 0 while filling in something: the current form is dropped and the
+// program goes back to the menu it came from (caught by the menu loops).
+struct CancelInput {};
+
+void printCancelled() {
+    cout << "\n Cancelled. Returning to the menu.\n";
+}
+
+void printCancelHint() {
+    cout << " (Enter 0 at any prompt to cancel)\n";
+}
+
 void readInputLine(string &text) {
     if (!getline(cin, text)) {
         cout << "\n Input closed. Goodbye!\n";
@@ -397,6 +407,7 @@ string getNonEmptyLine(const string &prompt) {
         cout << prompt;
         readInputLine(text);
         text = trim(text);
+        if (text == "0") throw CancelInput();       
         if (text == "") {
             cout << "  ! This field cannot be blank.\n";
         }
@@ -405,13 +416,14 @@ string getNonEmptyLine(const string &prompt) {
 }
 
 // An integer from low to high (the prompt is printed by the caller)
-int getIntInRange(int low, int high) {
+int getIntInRange(int low, int high, bool allowCancel = false) {
     string text;
     bool valid;
     int value = 0;
     do {
         readInputLine(text);
         text = trim(text);
+        if (allowCancel && text == "0") throw CancelInput();    
         valid = (text != "");
         for (int i = 0; i < textLength(text) && valid; i++) {
             if (!isDigitChar(text[i])) valid = false;
@@ -446,6 +458,7 @@ string askOptionalText(const string &prompt) {
         cout << prompt;
         readInputLine(text);
         text = trim(text);
+        if (text == "0") throw CancelInput();       
         valid = (text == "") || isValidText(text, true);
         if (!valid) cout << "  ! Invalid entry. Use letters, numbers, spaces, - ' and . only (no commas).\n";
     } while (!valid);
@@ -460,6 +473,7 @@ string askMiddleInitial() {
         cout << " Middle initial (Enter to skip) : ";
         readInputLine(text);
         text = trim(text);
+        if (text == "0") throw CancelInput();       
         if (textLength(text) == 2 && text[1] == '.') text = cutText(text, 0, 1);
         valid = (text == "") || (textLength(text) == 1 && isLetterChar(text[0]));
         if (!valid) cout << "  ! Enter one letter only (e.g. A).\n";
@@ -538,7 +552,7 @@ int askFromList(const string &title, const string items[], int numItems) {
         cout << "   [" << (i + 1) << "] " << items[i] << "\n";
     }
     cout << " Choose (1-" << numItems << ") : ";
-    return getIntInRange(1, numItems) - 1;
+    return getIntInRange(1, numItems, true) - 1;
 }
 
 // Prints a menu and returns the choice (1 to numItems)
@@ -580,6 +594,7 @@ int readSeatList(int minSeats, string seats[MAX_SEATS_PER_BOOKING]) {
         string line;
         readInputLine(line);
         line = toUpper(trim(line));
+        if (line == "0") throw CancelInput();       
 
         bool overflow = false;
         count = parseSeatTokens(line, seats, overflow);
@@ -1367,13 +1382,14 @@ private:
     // GET BOOKING: fills 'booking' (passed by reference). Returns false if no booking was made.
     bool getBooking(Booking &booking) {
         printTitle("CHOOSE A MOVIE");
+        printCancelHint();
         for (int i = 0; i < movieCount; i++) {
             cout << " [" << (i + 1) << "] ";
             movies[i].display();
         }
         drawLine('-', LINE_WIDTH);
         cout << " Choose a movie (1-" << movieCount << ") : ";
-        selectedMovie = &movies[getIntInRange(1, movieCount) - 1];          // POINTER
+        selectedMovie = &movies[getIntInRange(1, movieCount, true) - 1];          // POINTER
 
         printTitle("CHOOSE A CINEMA");
         for (int i = 0; i < cinemaCount; i++) {
@@ -1382,7 +1398,7 @@ private:
         }
         drawLine('-', LINE_WIDTH);
         cout << " Choose a cinema (1-" << cinemaCount << ") : ";
-        selectedCinema = &cinemas[getIntInRange(1, cinemaCount) - 1];       // POINTER
+        selectedCinema = &cinemas[getIntInRange(1, cinemaCount, true) - 1];       // POINTER
 
         buildSeatMap();
 
@@ -1472,6 +1488,7 @@ private:
             booking->saveToFile();      // counter and list unchanged: the next booking reuses this ID
         }
 
+        if (!available) cout << "\nBOOKING FAILED\n";
         cout << "\nYour order:\n";
         cout << "Movie name: " << booking->getMovieName() << "\n";
         cout << "Cinema: " << booking->getCinemaName() << "\n";
@@ -1563,13 +1580,14 @@ private:
         int choice = 0;
         do {
             choice = askMenu("MANAGER MENU", items, 5);
-            switch (choice) {
+            try { switch (choice) {
                 case 1: displayBooking(); break;
                 case 2: displayAllBookings(); break;
                 case 3: deleteBooking(); break;
                 case 4: displayTotalPayments(); break;
                 default: cout << "\n Returning to booking menu.\n"; break;
             }
+            } catch (CancelInput &) { printCancelled(); }       // 0 was typed: back to this menu
         } while (choice != 5);
     }
 
@@ -1591,7 +1609,13 @@ public:
 
     // Booking block for a CUSTOMER: GET BOOKING, then CHECK AVAILABILITY
     void runCustomer() {
-        customerFlow();
+        try {
+            customerFlow();
+        } catch (CancelInput &) {
+            selectedMovie = 0;                  // POINTER: nothing is selected anymore
+            selectedCinema = 0;
+            printCancelled();
+        }
     }
 
     // Booking block for the MANAGER: display, delete, total payments
@@ -1625,6 +1649,7 @@ private:
     // ADD CUSTOMER: asks for every detail, validates it, then assigns the customer ID
     void addCustomer() {
         printTitle("ADD CUSTOMER");
+        printCancelHint();
 
         cout << " NAME\n";
         string lastName = askText("   Last name : ", false);
@@ -1740,7 +1765,11 @@ private:
 public:
     // Customer block for a CUSTOMER: register
     void runCustomer() {
-        addCustomer();
+        try {
+            addCustomer();
+        } catch (CancelInput &) {
+            printCancelled();
+        }
     }
 
     // Customer block for the MANAGER: add, show all, show, delete
@@ -1750,13 +1779,14 @@ public:
         int choice = 0;
         do {
             choice = askMenu("CUSTOMER MENU", items, 5);
-            switch (choice) {
+            try { switch (choice) {
                 case 1: addCustomer(); break;
                 case 2: showAllCustomers(); break;
                 case 3: showCustomer(); break;
                 case 4: deleteCustomer(); break;
                 default: cout << "\n Exiting Customer Block.\n"; break;
             }
+            } catch (CancelInput &) { printCancelled(); }       // 0 was typed: back to this menu
         } while (choice != 5);
     }
 };
@@ -1771,6 +1801,7 @@ private:
     // ADD MOVIE: asks for every detail, validates it, then assigns the movie ID
     void addMovie() {
         printTitle("ADD MOVIE");
+        printCancelHint();
 
         string name = getNonEmptyLine(" Movie name : ");
         while (movieList.hasText(name)) {
@@ -1870,13 +1901,14 @@ public:
         int choice = 0;
         do {
             choice = askMenu("MOVIE MENU", items, 5);
-            switch (choice) {
+            try { switch (choice) {
                 case 1: addMovie(); break;
                 case 2: showAllMovies(); break;
                 case 3: showMovie(); break;
                 case 4: deleteMovie(); break;
                 default: cout << "\n Exiting Movie Block.\n"; break;
             }
+            } catch (CancelInput &) { printCancelled(); }       // 0 was typed: back to this menu
         } while (choice != 5);
     }
 };
@@ -1898,6 +1930,7 @@ private:
     // ADD CINEMA: asks for every detail, validates it, then assigns the cinema ID
     void addCinema() {
         printTitle("ADD CINEMA");
+        printCancelHint();
         if (cinemaList.load() >= MAX_CINEMAS) {
             cout << " The cinema list is full. A cinema must be deleted first.\n";
             return;
@@ -1922,14 +1955,14 @@ private:
         }
 
         cout << " Number of rows (1-" << MAX_ROWS << ") : ";
-        int rows = getIntInRange(1, MAX_ROWS);
+        int rows = getIntInRange(1, MAX_ROWS, true);
         cout << " Number of seats per row (1-" << MAX_SEATS_PER_ROW << ") : ";
-        int seatsPerRow = getIntInRange(1, MAX_SEATS_PER_ROW);
+        int seatsPerRow = getIntInRange(1, MAX_SEATS_PER_ROW, true);
         cout << " Capacity (rows x seats per row) : " << rows * seatsPerRow << "\n";
 
         string contact = askContact();
         cout << " Ticket price (1-" << MAX_TICKET_PRICE << ") : ";
-        int price = getIntInRange(1, MAX_TICKET_PRICE);
+        int price = getIntInRange(1, MAX_TICKET_PRICE, true);
         int typeIndex = askFromList("Cinema type", CINEMA_TYPES, NUM_CINEMA_TYPES);
 
         // The ID is assigned only after all the information was submitted
@@ -2058,13 +2091,14 @@ public:
         int choice = 0;
         do {
             choice = askMenu("CINEMA MENU", items, 5);
-            switch (choice) {
+            try { switch (choice) {
                 case 1: addCinema(); break;
                 case 2: showAllCinemas(); break;
                 case 3: showCinema(); break;
                 case 4: deleteCinema(); break;
                 default: cout << "\n Exiting Cinema Block.\n"; break;
             }
+            } catch (CancelInput &) { printCancelled(); }       // 0 was typed: back to this menu
         } while (choice != 5);
     }
 };

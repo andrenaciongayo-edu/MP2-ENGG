@@ -11,20 +11,14 @@ int main()
     int roleChoice = 0; // 1 = customer, 2 = manager, 3 = exit
     bool isManager = false;
     bool userChosen = false;
-
+    const string mainMenuItems[3] = {"Customer", "Manager", "Exit"};
+    const string managerMenuItems[5] = {"Customer Block", "Movie Block", "Cinema Block", "Booking Block", "Back"};
+    const string customerMenuItems[3] = {"Customer Block", "Booking Block", "Back"};
     // ---------- START: ask if the user is a manager or a customer ----------
     do
     {
-        printTitle("MAIN MENU");
-        cout << "Welcome to the Movie Booking System!\n";
-        cout << "Are you a:\n";
-        cout << "   [1] Customer\n";
-        cout << "   [2] Manager\n";
-        cout << "   [3] Exit\n";
-        drawLine('-', LINE_WIDTH);
-        cout << "\n Choice: ";
-        roleChoice = getIntInRange(1, 3);
-        isManager = false;                  // a new visit never keeps the old manager access
+        roleChoice = askMenu("WELCOME TO THE CINEMA BOOKING SYSTEM", mainMenuItems, 3);
+        isManager = false;
         userChosen = false;
 
         if (roleChoice == 1)
@@ -71,15 +65,7 @@ int main()
             int managerChoice = 0;
             do
             {
-                printTitle("MANAGER OPTIONS");
-                cout << "   [1] Customer Block\n";
-                cout << "   [2] Movie Block\n";
-                cout << "   [3] Cinema Block\n";
-                cout << "   [4] Booking Block\n";
-                cout << "   [5] End\n";
-                drawLine('-', LINE_WIDTH);
-                cout << " Choice: ";
-                managerChoice = getIntInRange(1, 5);
+                managerChoice = askMenu("MANAGER OPTIONS", managerMenuItems, 5);
 
                 switch (managerChoice)
                 {
@@ -107,13 +93,7 @@ int main()
             int customerChoice = 0;
             do
             {
-                printTitle("CUSTOMER OPTIONS");
-                cout << "   [1] Customer Block\n";
-                cout << "   [2] Booking Block\n";
-                cout << "   [3] End\n";
-                drawLine('-', LINE_WIDTH);
-                cout << " Choice: ";
-                customerChoice = getIntInRange(1, 3);
+                customerChoice = askMenu("CUSTOMER OPTIONS", customerMenuItems, 3);
 
                 switch (customerChoice)
                 {
