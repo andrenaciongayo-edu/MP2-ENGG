@@ -1747,8 +1747,10 @@ private:
             startDate = askDate(" Start date (MM/DD/YYYY) : ");
         }
         string endDate = askDate(" End date (MM/DD/YYYY) : ");
-        while (convertDate(endDate) <= convertDate(startDate)) {
-            cout << "  ! The end date must be after the start date.\n";
+
+        while (convertDate(endDate) <= todayNumber() ||
+        convertDate(endDate) <= convertDate(startDate)) {
+            cout << "  ! End date must be after today and after the start date.\n";
             endDate = askDate(" End date (MM/DD/YYYY) : ");
         }
 
